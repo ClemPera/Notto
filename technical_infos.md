@@ -31,9 +31,11 @@ This document outlines the technical implementation requirements for building a 
   - Communicates via CouchDB replication protocol
 
 ### Security & Encryption
-- **Encryption API**: Web Crypto API (browser native)
-- **Algorithm**: AES-256-GCM for content encryption
+- **Encryption API**: Web Crypto API (browser native) + ML-KEM-768 library for key exchange
+- **Key Exchange**: ML-KEM-768 (post-quantum secure lattice-based cryptography)
+- **Content Encryption**: AES-256-GCM for symmetric encryption of note content
 - **Key Derivation**: PBKDF2 or Argon2id for password-based key generation
+- **At-Rest Encryption**: All files encrypted on local device storage
 - **2FA**: TOTP (Time-based One-Time Password) using standard authenticator apps
 
 ### Storage Format
@@ -112,10 +114,12 @@ Native OS APIs / CouchDB Sync
 - UI never blocks waiting for network
 
 **End-to-End Encryption:**
-- Encryption happens client-side before sync
+- Encryption happens client-side before sync and for local storage
 - Server (CouchDB) only stores encrypted blobs
 - Encryption key derived from user password (never sent to server)
 - Zero-knowledge architecture: server cannot decrypt notes
+- All files encrypted at rest on device
+- ML-KEM-768 used for secure key exchange between devices
 
 **Cross-Platform Strategy:**
 - Single React codebase for all platforms
@@ -155,33 +159,58 @@ Note Document:
 
 ### 2. Encryption Layer
 
-**Goal**: Implement client-side end-to-end encryption for all note content.
+**Goal**: Implement client-side end-to-end encryption for all note content with post-quantum secure key exchange.
 
 **Requirements:**
-- Use Web Crypto API for all cryptographic operations
-- Implement AES-256-GCM for symmetric encryption
+- Use Web Crypto API for AES-256-GCM symmetric encryption
+- Implement ML-KEM-768 (CRYSTALS-Kyber) for post-quantum secure key exchange between devices
+- Use a JavaScript/WebAssembly library for ML-KEM-768 (e.g., liboqs-js or similar)
+- Encrypt all note content with AES-256-GCM before storing locally or syncing
 - Derive encryption key from user password using PBKDF2 (100,000+ iterations) or Argon2id
 - Generate random initialization vectors (IV) for each encryption operation
-- Store encrypted content and IV in note document
+- Store encrypted content, IV, and key exchange public keys in note/settings documents
 - Decrypt content on-demand when note is accessed
 - Never store plain-text encryption key (derive on-demand from password)
+- All files must be encrypted at rest on device (no plaintext storage)
+
+**Key Exchange Process:**
+```
+Device A Setup:
+- Generate ML-KEM-768 keypair (public/private)
+- Store public key in user profile (encrypted, uploaded to server)
+- Store private key locally (encrypted with user's derived key)
+
+Device B Syncing:
+- Retrieve Device A's public key from server
+- Generate shared secret using ML-KEM-768 encapsulation
+- Derive session key from shared secret
+- Use session key to encrypt/decrypt sync-specific data
+```
 
 **Key Derivation Process:**
 ```
 User Password
     ↓
-+ Random Salt (generated once, stored in settings)
++ Random Salt (generated once, stored encrypted in settings)
     ↓
 PBKDF2 / Argon2id (100k+ iterations)
     ↓
-256-bit Encryption Key (held in memory, never persisted)
+256-bit Master Key (held in memory, never persisted)
+    ↓
+Derives: Content Encryption Key, Local Storage Key, Key Exchange Private Key Encryption
 ```
+
+**Local Storage Encryption:**
+- All note files encrypted with AES-256-GCM before writing to disk
+- PouchDB documents stored encrypted
+- Metadata (titles, folders) should also be encrypted
+- Decryption happens in memory only when accessing notes
 
 **Recovery Phrase:**
 - Generate 24-word BIP39 mnemonic phrase during account setup
 - Derive master key from mnemonic
 - User must write down phrase (displayed once)
-- Implement recovery flow using phrase to regenerate encryption key
+- Implement recovery flow using phrase to regenerate encryption key and ML-KEM keypair
 
 ### 3. Sync Layer
 
@@ -285,11 +314,11 @@ PouchDB Local ←→ CouchDB Remote
 - Block quotes
 
 **Phase 2 Enhancements:**
+- Image embeds and attachments (store encrypted)
 - Tables
 - Mermaid diagrams
 - LaTeX/math equations
-- Image embeds
-- File attachments
+- File attachments (PDFs, documents, audio)
 
 ### 7. File Organization
 
@@ -357,18 +386,11 @@ PouchDB Local ←→ CouchDB Remote
 
 **Requirements:**
 - Implement Tauri commands for:
-  - **Filesystem operations**: Read/write markdown files if needed for export/import
-  - **Secure storage**: Store auth tokens in OS keychain
+  - **Filesystem operations**: Read/write encrypted markdown files, handle encrypted image/file attachments
+  - **Secure storage**: Store auth tokens and encrypted keys in OS keychain
   - **System integration**: File dialogs (import/export), system notifications
-  - **Crypto helpers**: Optional Rust-based crypto for performance-critical operations
+  - **Crypto helpers**: Optional Rust-based crypto for performance-critical operations, ML-KEM-768 operations if needed
   
-**Example Commands:**
-- `export_note(path, content)`: Write note to filesystem
-- `import_notes(path)`: Read markdown files from directory
-- `store_token(key, value)`: Store auth token securely
-- `get_token(key)`: Retrieve auth token
-- `show_notification(title, body)`: Display system notification
-
 **Platform Detection:**
 - Use Tauri's platform API to detect OS
 - Conditionally enable features (e.g., system tray on desktop only)
@@ -391,10 +413,12 @@ PouchDB Local ←→ CouchDB Remote
 8. Add note creation/editing/deletion flows
 
 ### Week 5-6: Security
-9. Implement encryption layer (Web Crypto API)
-10. Add key derivation from password
-11. Implement 24-word recovery phrase generation
-12. Encrypt all note content before storage
+9. Implement encryption layer (Web Crypto API for AES-256-GCM)
+10. Implement ML-KEM-768 for key exchange (integrate library)
+11. Add key derivation from password
+12. Implement 24-word recovery phrase generation
+13. Encrypt all note content before storage (local and sync)
+14. Implement at-rest encryption for all local files
 
 ### Week 7-8: Sync
 13. Implement PouchDB ↔ CouchDB sync
@@ -468,9 +492,11 @@ PouchDB Local ←→ CouchDB Remote
 
 ### Critical Security Rules
 
-1. **Never store plaintext encryption keys**
-   - Always derive from password on-demand
-   - Clear key from memory when app locks
+1. **Never store plaintext encryption keys or unencrypted content**
+   - Always derive keys from password on-demand
+   - Clear keys from memory when app locks
+   - All files encrypted at rest on device
+   - No plaintext metadata in local storage
 
 2. **Never send unencrypted content to server**
    - All encryption happens client-side
@@ -493,12 +519,15 @@ PouchDB Local ←→ CouchDB Remote
 
 ### Encryption Best Practices
 
-- Use Web Crypto API (audited, native implementation)
-- Generate cryptographically secure random IVs
+- Use Web Crypto API for AES-256-GCM (audited, native implementation)
+- Use ML-KEM-768 (CRYSTALS-Kyber) for post-quantum secure key exchange
+- Generate cryptographically secure random IVs for each encryption operation
 - Use authenticated encryption (GCM mode)
-- Implement proper key derivation (high iteration count)
-- Store salt securely (per-user, in database)
+- Implement proper key derivation (high iteration count, 100k+ for PBKDF2)
+- Store salt securely (per-user, encrypted in database)
+- Encrypt all files at rest on device
 - Version encryption format for future upgrades
+- Consider hybrid encryption: ML-KEM-768 for key exchange, AES-256-GCM for content
 
 ---
 
@@ -676,7 +705,7 @@ PouchDB Local ←→ CouchDB Remote
 - codemirror: Code editor
 - zxcvbn: Password strength estimation
 - otpauth: TOTP generation/validation
-
----
+- liboqs-js or kyber-crystals: ML-KEM-768 implementation
+- bip39: Mnemonic phrase generation
 
 Remember: Focus on getting MVP features stable before adding enhancements. Better to ship a solid, limited app than a buggy full-featured one.

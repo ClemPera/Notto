@@ -37,11 +37,14 @@ General users seeking a private, reliable note-taking solution with cross-device
 - **API**: RESTful API for authentication and account management
 
 ### Security & Encryption
-- **E2E Encryption**: Client-side encryption before sync
-- **Key Derivation**: Password-based (PBKDF2/Argon2)
-- **Authentication**: Username/password with 2FA
+- **E2E Encryption**: Client-side encryption before sync and at rest
+- **Key Exchange**: ML-KEM-768 (post-quantum secure)
+- **File Encryption**: AES-256-GCM for note content
+- **Key Derivation**: Password-based (PBKDF2/Argon2) for local key generation
+- **Authentication**: Username/password with 2FA (server cannot decrypt content)
 - **Recovery**: 24-word recovery phrase (user-stored)
 - **2FA Recovery**: Backup codes provided during setup
+- **Local Storage**: All files encrypted at rest on device
 
 ### Data Format
 - **Notes**: Markdown files (.md)
@@ -57,6 +60,7 @@ General users seeking a private, reliable note-taking solution with cross-device
 - Checkbox/task list support
 - Rich text formatting (bold, italic, headers, lists, code blocks)
 - Note creation, editing, deletion
+- All notes encrypted at rest on local device
 
 ### Organization
 - Folder and subfolder hierarchy
@@ -72,11 +76,13 @@ General users seeking a private, reliable note-taking solution with cross-device
 - Real-time sync when online
 
 ### Security
-- End-to-end encryption (AES-256)
+- End-to-end encryption (AES-256-GCM for content, ML-KEM-768 for key exchange)
 - Password-based authentication
 - 2FA support (TOTP)
 - 24-word recovery phrase generation
 - Client-side encryption/decryption
+- All files encrypted at rest on device
+- Zero-knowledge architecture (server cannot decrypt)
 
 ### Platform Support
 - Desktop applications (Windows, macOS, Linux)
@@ -106,7 +112,7 @@ General users seeking a private, reliable note-taking solution with cross-device
 - Mermaid diagrams
 - LaTeX/math equations
 - Code syntax highlighting
-- Embeds (images, PDFs, audio)
+- Image embeds and attachments
 - Drawing/sketching canvas
 
 ### Sync Improvements
@@ -150,8 +156,11 @@ General users seeking a private, reliable note-taking solution with cross-device
 
 ### Security Requirements
 - Zero-knowledge architecture (server cannot decrypt notes)
+- All files encrypted at rest on device
+- ML-KEM-768 for post-quantum secure key exchange
+- AES-256-GCM for content encryption
 - Secure key storage (OS keychain/keystore)
-- No plaintext data in sync
+- No plaintext data in sync or local storage
 - Regular security audits
 
 ### Compatibility
@@ -231,7 +240,7 @@ General users seeking a private, reliable note-taking solution with cross-device
 | Sync Server | CouchDB |
 | Language (Backend) | Rust |
 | Language (Frontend) | TypeScript/JavaScript |
-| Encryption | AES-256-GCM |
+| Encryption | AES-256-GCM (content), ML-KEM-768 (key exchange) |
 | Storage Format | Markdown + JSON |
 | Platforms | Windows, macOS, Linux, iOS, Android |
 
