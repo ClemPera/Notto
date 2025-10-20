@@ -34,7 +34,7 @@ General users seeking a private, reliable note-taking solution with cross-device
 - **Sync Server**: Self-hosted CouchDB
   - Users can self-host (Docker image provided)
   - Official hosted instance available (paid)
-- **API**: RESTful API for authentication and account management
+- **Authentication**: CouchDB native authentication with TOTP 2FA support
 
 ### Security & Encryption
 - **E2E Encryption**: Client-side encryption before sync and at rest
@@ -77,12 +77,12 @@ General users seeking a private, reliable note-taking solution with cross-device
 
 ### Security
 - End-to-end encryption (AES-256-GCM for content, ML-KEM-768 for key exchange)
-- Password-based authentication
-- 2FA support (TOTP)
+- CouchDB native authentication (username/password + TOTP 2FA)
 - 24-word recovery phrase generation
 - Client-side encryption/decryption
 - All files encrypted at rest on device
 - Zero-knowledge architecture (server cannot decrypt)
+- 2FA backup codes for account recovery
 
 ### Platform Support
 - Desktop applications (Windows, macOS, Linux)
@@ -180,8 +180,10 @@ General users seeking a private, reliable note-taking solution with cross-device
 
 ### Self-Hosting Setup
 - Provide Docker Compose configuration for CouchDB
-- Documentation for deployment
+- Documentation for CouchDB deployment and 2FA setup
 - Environment variables for configuration
+- SSL/TLS configuration guide
+- User creation scripts with 2FA enrollment
 - Health check endpoints
 
 ### Testing Requirements

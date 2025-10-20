@@ -102,7 +102,7 @@ PouchDB (local storage + encryption)
     ↓
 Tauri Bridge (Rust backend)
     ↓
-Native OS APIs / CouchDB Sync
+Native OS APIs / CouchDB Sync (with 2FA session auth)
 ```
 
 ### Key Architectural Decisions
@@ -120,6 +120,13 @@ Native OS APIs / CouchDB Sync
 - Zero-knowledge architecture: server cannot decrypt notes
 - All files encrypted at rest on device
 - ML-KEM-768 used for secure key exchange between devices
+
+**Authentication & Security:**
+- CouchDB native authentication with username/password
+- TOTP 2FA built into CouchDB (no external services needed)
+- Session cookie-based authentication for sync
+- Self-hostable with full 2FA support
+- Admin creates users via CouchDB API with TOTP secrets
 
 **Cross-Platform Strategy:**
 - Single React codebase for all platforms
@@ -256,35 +263,90 @@ PouchDB Local ←→ CouchDB Remote
 
 ### 5. Authentication & 2FA
 
-**Goal**: Secure user accounts with password authentication and two-factor verification.
+**Goal**: Secure user accounts using CouchDB's native authentication with TOTP 2FA.
 
 **Requirements:**
-- Implement user registration flow:
-  - Username + password
-  - Generate 24-word recovery phrase
-  - Generate 2FA secret (TOTP)
-  - Display QR code for authenticator app
-  - Generate 2FA backup codes (10 single-use codes)
-  - User must confirm they've saved recovery phrase and 2FA backup codes
-- Implement login flow:
-  - Username + password
-  - TOTP code from authenticator app
-  - Derive encryption key from password
-  - Initialize PouchDB with user-specific database
-- Store authentication token securely:
-  - Use Tauri's secure storage or OS keychain
-  - Never store password or encryption key
-- Implement session management:
-  - Auto-lock after inactivity
-  - Require re-authentication on app restart
-- 2FA recovery flow using backup codes
 
-**API Integration:**
-- Create Rust backend commands in Tauri for:
-  - Registration: communicate with CouchDB to create user account
-  - Login: authenticate against CouchDB
-  - 2FA validation: verify TOTP codes
-  - Token management: securely store/retrieve auth tokens
+**User Registration Flow:**
+- Generate TOTP secret (base32 encoded, 32 characters) client-side
+- Generate 24-word BIP39 recovery phrase for encryption key recovery
+- Generate ML-KEM-768 keypair for key exchange
+- Derive encryption key from password (never sent to server)
+- Encrypt private key with derived encryption key
+- Admin creates user in CouchDB `_users` database with:
+  - Username and password (CouchDB hashes with PBKDF2)
+  - TOTP secret in user document: `{ "totp": { "key": "BASE32SECRET" } }`
+  - Encrypted ML-KEM-768 public key in user profile
+  - User's salt for key derivation
+- Display TOTP QR code for authenticator app enrollment
+- Generate and display 10 single-use backup codes for 2FA recovery
+- User must confirm they've saved:
+  - Recovery phrase (for encryption key recovery)
+  - 2FA backup codes (for 2FA recovery)
+  - TOTP secret (in authenticator app)
+
+**User Login Flow:**
+- User enters username, password, and TOTP code (6 digits from authenticator app)
+- Client derives encryption key from password (client-side, never sent)
+- Client sends authentication request to CouchDB `/_session` endpoint:
+  ```json
+  {
+    "name": "username",
+    "password": "password",
+    "token": "123456"
+  }
+  ```
+- CouchDB validates password and TOTP code
+- CouchDB returns session cookie on success
+- Client retrieves user profile from CouchDB (contains encrypted keys, salt)
+- Client decrypts ML-KEM-768 private key using derived encryption key
+- Initialize PouchDB with user-specific database using session cookie
+
+**Session Management:**
+- Session cookies automatically handled by PouchDB/browser
+- Store session state in Tauri secure storage (OS keychain)
+- Never store password or encryption key (only session cookie)
+- Implement auto-lock after inactivity (configurable: 5/10/15/30 min)
+- Require full re-authentication (password + 2FA) on app restart
+- Clear encryption keys from memory on lock/logout
+
+**2FA Backup Code Recovery:**
+- If user loses access to authenticator app
+- Login with username + password + backup code (instead of TOTP)
+- Backup code is single-use and removed after successful login
+- User must re-enroll 2FA (new TOTP secret) after using backup code
+
+**CouchDB User Document Structure:**
+```json
+{
+  "_id": "org.couchdb.user:username",
+  "name": "username",
+  "password": "hashed_by_couchdb",
+  "type": "user",
+  "roles": [],
+  "totp": {
+    "key": "BASE32_TOTP_SECRET"
+  },
+  "mlkem_public_key": "base64_encoded_public_key",
+  "salt": "hex_encoded_salt",
+  "backup_codes": ["code1", "code2", ...] // Optional: store hashed
+}
+```
+
+**Tauri Backend Commands:**
+- `secure_store(key, value)`: Store session cookie in OS keychain
+- `secure_retrieve(key)`: Retrieve session cookie from keychain
+- `secure_delete(key)`: Clear session data on logout
+- `generate_totp_secret()`: Generate cryptographically secure base32 secret
+- `generate_backup_codes()`: Generate 10 random backup codes
+
+**Important Notes:**
+- CouchDB handles password hashing (PBKDF2) automatically
+- TOTP validation happens on CouchDB server
+- Encryption key derivation is entirely client-side
+- Server never sees or can derive encryption keys
+- 2FA is required for login but not for sync (session cookie is used)
+- Users can self-host with full 2FA support (no external services needed)
 
 ### 6. Markdown Editor
 
@@ -382,7 +444,7 @@ PouchDB Local ←→ CouchDB Remote
 
 ### 10. Tauri Backend (Rust)
 
-**Goal**: Implement native functionality.
+**Goal**: Implement native functionalities.
 
 **Requirements:**
 - Implement Tauri commands for:
@@ -420,11 +482,13 @@ PouchDB Local ←→ CouchDB Remote
 13. Encrypt all note content before storage (local and sync)
 14. Implement at-rest encryption for all local files
 
-### Week 7-8: Sync
-13. Implement PouchDB ↔ CouchDB sync
-14. Add authentication (username/password)
-15. Implement 2FA (TOTP)
-16. Add sync status UI
+### Week 7-8: Sync & Authentication
+14. Implement user registration with CouchDB (admin API calls)
+15. Implement TOTP secret generation and QR code display
+16. Implement login flow with CouchDB session authentication (password + TOTP)
+17. Implement PouchDB ↔ CouchDB sync using session cookies
+18. Add sync status UI
+19. Implement 2FA backup codes generation and recovery flow
 
 ### Week 9-10: Conflict Handling
 17. Implement conflict detection
@@ -549,10 +613,12 @@ PouchDB Local ←→ CouchDB Remote
    - Domain and SSL certificate setup
 
 3. **User Management**
-   - How to create user accounts in CouchDB
+   - How to create user accounts in CouchDB with 2FA
+   - User document structure with TOTP secrets
    - Database per-user setup
-   - Setting up replication
-   - Managing permissions
+   - Setting up replication with session authentication
+   - Managing permissions and roles
+   - 2FA backup code management
 
 4. **Security Hardening**
    - Change default admin credentials
@@ -704,7 +770,8 @@ PouchDB Local ←→ CouchDB Remote
 - remark/rehype: Markdown processing
 - codemirror: Code editor
 - zxcvbn: Password strength estimation
-- otpauth: TOTP generation/validation
+- otpauth: TOTP generation/validation (client-side)
+- qrcode: QR code generation for TOTP enrollment
 - liboqs-js or kyber-crystals: ML-KEM-768 implementation
 - bip39: Mnemonic phrase generation
 
