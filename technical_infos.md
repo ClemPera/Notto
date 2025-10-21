@@ -41,25 +41,32 @@ This document defines the technical implementation for a cross-platform note-tak
 
 ### Data Persistence & Sync
 
-* **Local Database:** SQLite or sled
+* **Local Database:** SQLite (Rust backend)
 
   * Managed fully by Rust backend
-  * Stores encrypted data
+  * Stores encrypted note content and metadata
   * Supports offline-first behavior
+  * Notes stored as encrypted markdown in database with encryption applied at rest
+* **Storage Format:** Notes are markdown files (.md) that are encrypted before storage
+
+  * Markdown content stored encrypted in SQLite
+  * Can be exported as encrypted markdown files
+  * All markdown editable; encryption/decryption handled transparently in Rust
 * **Sync Server:** CouchDB (latest)
 
   * Self-hostable, used for sync only
   * All communication done via Rust
   * TypeScript never interacts directly
+  * Sync implemented in Phase 1 (included in MVP)
 
 ### Security & Encryption
 
 * **Handled entirely in Rust**
-* **Encryption Libraries:** `ring`, `RustCrypto`, `pqcrypto-kyber`, `argon2`
-* **Key Derivation:** Argon2id
-* **Encryption:** AES-256-GCM
-* **Key Exchange:** ML-KEM-768 (post-quantum)
-- **2FA**: TOTP (Time-based One-Time Password) using standard authenticator apps
+* **Encryption Libraries:** `ring`, `RustCrypto`, `argon2`
+* **Key Derivation:** Argon2id with password-based key derivation
+* **Encryption:** AES-256-GCM for all note content
+* **Key Exchange:** ML-KEM-768 (post-quantum) - deferred to Phase 2
+- **2FA**: TOTP (Time-based One-Time Password) using standard authenticator apps - included in Phase 1
 
 ### Environment
 
@@ -99,10 +106,11 @@ Rust Backend
 **End-to-End Encryption:**
 - Encryption happens client-side before sync and for local storage
 - Server (CouchDB) only stores encrypted blobs
-- Encryption key derived from user password (never sent to server)
+- Encryption key derived from user password via Argon2id (never sent to server)
 - Zero-knowledge architecture: server cannot decrypt notes
-- All files encrypted at rest on device
-- ML-KEM-768 used for secure key exchange between devices
+- All notes encrypted at rest on device in SQLite
+- Recovery phrase derived from password (BIP39-style) for account recovery
+- ML-KEM-768 for post-quantum key exchange deferred to Phase 2
 
 **Authentication & Security:**
 - The users should be able to login with username/password
@@ -135,11 +143,12 @@ Rust Backend
 ### 2. Rust Backend – Encryption Layer
 
 * Perform all encryption/decryption
-* Derive keys using Argon2id
-* Handle key exchange via ML-KEM-768
-* AES-256-GCM for symmetric encryption or files
-* Encrypt data before writing to disk or database
+* Derive keys using Argon2id with user password
+* Generate recovery phrases (BIP39-style) derived from password
+* AES-256-GCM for symmetric encryption of note content
+* Encrypt markdown before writing to database at rest
 * Never expose keys or decrypted content to frontend
+* ML-KEM-768 key exchange deferred to Phase 2
 
 ### 3. Rust Backend – Sync Layer
 
@@ -176,45 +185,61 @@ Rust Backend
 
 ---
 
-## Implementation Priorities (MVP)
+## Implementation Priorities (MVP - Phase 1)
 
 **Part 1: Foundation**
 
 * Set up Tauri + React + Rust + Tailwind
-* Implement database layer (SQLite/sled)
-* Create core Tauri command structure
+* Implement SQLite database layer in Rust
+* Create core Tauri command structure and IPC
 
 **Part 2: Core Backend Logic**
 
-* Implement encryption (AES-256-GCM, Argon2id)
-* Build CRUD operations in Rust
-* Implement search and indexing
+* Implement encryption (AES-256-GCM, Argon2id with password-based derivation)
+* Build CRUD operations for notes in Rust
+* Implement search and indexing in Rust
 
-**Part 3: Security & Crypto**
+**Part 3: Authentication & Encryption**
 
-* Implement ML-KEM-768, recovery phrase (BIP39)
-* At-rest encryption, session management, OS keychain
+* Implement password-based encryption key derivation (Argon2id)
+* Generate and store recovery phrases (BIP39-style)
+* Session management and OS keychain integration
+* Login, registration, and recovery flows in Rust
 
-**Part 4: Sync & Auth**
+**Part 4: Sync & CouchDB**
 
-* Implement CouchDB sync client and TOTP auth
-* Manage sessions, tokens, and login flow
+* Implement CouchDB sync client in Rust (bidirectional)
+* Implement conflict detection and resolution
+* TOTP 2FA support
+* Background sync thread management
 
-**Part 5: Conflict Handling**
+**Part 5: Frontend UI**
 
-* Implement conflict detection/resolution in Rust
-* Expose minimal info to frontend for display
+* Markdown editor with live preview (React)
+* Note list and folder/subfolder organization
+* Authentication UI (login, registration, 2FA)
+* Search interface
+* Sync status display
+* Conflict resolution UI (display only)
 
-**Part 6: Frontend Polish**
+**Part 6: File Operations & Polish**
 
-* Markdown editor, folder/subfolders UI, search
-* Settings and platform integration
+* Encrypted file export/import
+* Settings and preferences
+* Platform integration (tray, shortcuts)
 
 **Part 7: Testing & Release**
 
 * Rust unit and integration tests
-* E2E tests (user flows, sync, auth)
-* Optimization and bug fixes
+* E2E tests (user flows, sync, auth, conflicts)
+* Performance optimization and bug fixes
+
+## Phase 2 (Deferred)
+
+* ML-KEM-768 post-quantum key exchange implementation
+* Multiple vault support
+* Advanced conflict resolution UI
+* Mobile optimization
 
 ---
 
@@ -270,15 +295,15 @@ Rust Backend
 
 ### Encryption Best Practices
 
-- AES-256-GCM for markdown (and others) encryption
-- Use ML-KEM-768 (CRYSTALS-Kyber) for post-quantum secure key exchange
-- Generate cryptographically secure random IVs for each encryption operation
-- Use authenticated encryption (GCM mode)
-- Implement proper key derivation 
-- Store salt securely
-- Encrypt all files at rest on device
-- Version encryption format for future upgrades
-- Consider hybrid encryption: ML-KEM-768 for key exchange, AES-256-GCM for content
+- AES-256-GCM for all note content encryption
+- Password-based key derivation using Argon2id (Phase 1)
+- Generate cryptographically secure random IVs/nonces for each encryption operation
+- Use authenticated encryption (GCM mode with authentication tags)
+- Store Argon2id parameters (salt, cost, iterations) securely alongside encrypted data
+- Encrypt all notes at rest in SQLite database
+- Version encryption format for future upgrades (support multiple versions)
+- BIP39-style recovery phrase generation for account recovery
+- ML-KEM-768 hybrid encryption deferred to Phase 2 (for device-specific keys)
 
 
 ## Platform-Specific Considerations

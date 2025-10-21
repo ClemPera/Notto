@@ -1,0 +1,51 @@
+[package]
+name = "notto"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Tauri framework
+tauri = { version = "2", features = [] }
+tauri-build = "2"
+
+# Database
+rusqlite = { version = "0.31", features = ["bundled", "chrono", "uuid"] }
+
+# Encryption & Security
+ring = "0.17"
+aes-gcm = "0.10"
+argon2 = "0.5"
+rand = "0.8"
+sha2 = "0.10"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+# HTTP client for CouchDB
+reqwest = { version = "0.11", features = ["json"] }
+
+# Utilities
+uuid = { version = "1.0", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "1.0"
+
+# Recovery phrases
+bip39 = "2.0"
+
+# TOTP 2FA
+totp-lite = "2.0"
+qrcode = "0.14"
+
+# OS keychain
+keyring = "2.1"
+
+[build-dependencies]
+tauri-build = "2"
