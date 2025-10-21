@@ -49,5 +49,8 @@ urlencoding = "2.1"
 # OS keychain
 keyring = "3.6"
 
+# Utilities
+lazy_static = "1.4"
+
 [build-dependencies]
 tauri-build = "2"

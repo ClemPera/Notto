@@ -2144,6 +2144,7 @@ dependencies = [
  "bip39",
  "chrono",
  "keyring",
+ "lazy_static",
  "qrcode",
  "rand 0.9.2",
  "reqwest",

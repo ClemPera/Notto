@@ -40,15 +40,17 @@
 - [x] Create Tauri command handlers for all auth operations
 - [x] **Auth System Compilation Status: ✅ PASSING**
 
-## Part 4: Sync & CouchDB - ⏳ PENDING
+## Part 4: Sync & CouchDB - 🟡 IN PROGRESS
 
-- [ ] Implement CouchDB HTTP client
-- [ ] Implement bidirectional sync
-- [ ] Implement conflict detection (timestamp-based)
-- [ ] Implement conflict resolution (create conflict copies)
-- [ ] Implement background sync thread
-- [ ] Implement change tracking and versioning
+- [x] Implement CouchDB HTTP client (reqwest-based)
+- [x] Implement conflict detection (timestamp and content-based)
+- [x] Implement conflict resolution (three-way merge, create copies)
+- [ ] Implement bidirectional sync (get_local_changes, upload, download)
+- [ ] Implement background sync thread with tokio
+- [ ] Implement change tracking and versioning in database
 - [ ] Implement sync status notifications
+- [x] Create Tauri sync command handlers
+- [x] **Sync System Compilation Status: ✅ PASSING**
 
 ## Part 5: Frontend UI (React) - ⏳ PENDING
 
@@ -135,6 +137,54 @@
 
 ## Implementation Details
 
+### Part 4 - CouchDB Sync Module Structure
+
+**Files Created:**
+- `src-tauri/src/sync/mod.rs` - Main sync client and orchestration (174 lines)
+- `src-tauri/src/sync/client.rs` - HTTP client for CouchDB API (350+ lines)
+- `src-tauri/src/sync/conflict.rs` - Conflict detection and resolution (280+ lines)
+- `src-tauri/src/sync/models.rs` - Sync data structures (110+ lines)
+- `src-tauri/src/commands/sync.rs` - Tauri IPC sync command handlers (130+ lines)
+- Updated `src-tauri/src/commands/mod.rs` - Exposed sync commands
+
+**Key Features:**
+- CouchDB document management (upload, download, delete)
+- Connectivity checking with 5-second timeout
+- Changes feed polling for incremental sync
+- Conflict detection using timestamps, versions, and content hashes
+- Three-way merge strategy for text content
+- Create conflict copies strategy for manual resolution
+- Async sync operations with status tracking
+- User-per-database model (userdb-{username})
+- Bearer token authentication
+
+**Tauri Commands Exposed:**
+- `initialize_sync` - Initialize sync client with server URL
+- `start_sync` - Begin synchronization process
+- `get_sync_status` - Check current sync status (Idle, Syncing, Success, Error, Offline)
+- `check_connectivity` - Test connection to CouchDB server
+
+**Sync Data Structures:**
+- `SyncClient` - Main client managing sync operations
+- `SyncStatus` - States: Idle, Syncing, Success, Error, Offline
+- `CouchDbDocument` - Document format for storage
+- `ChangesResponse` - Incremental changes from CouchDB
+- `ConflictStrategy` - LastWriteWins, KeepLocal, or CreateBoth
+- `SyncEvent` - Event types for sync operations
+
+**Conflict Resolution Strategies:**
+1. Last-Write-Wins: Newer document overwrites older
+2. Keep Local: Always prefer local changes
+3. Create Both: Keep local and create conflict copy of remote
+
+**HTTP Operations:**
+- POST `/_session` - Authenticate with CouchDB
+- PUT `/{db}` - Create user database
+- PUT `/{db}/{docid}` - Upload encrypted document
+- GET `/{db}/{docid}` - Download encrypted document
+- GET `/{db}/_changes` - Get incremental changes
+- DELETE `/{db}/{docid}` - Delete document
+
 ### Part 3 - Authentication Module Structure
 
 **Files Created:**
@@ -163,4 +213,4 @@
 
 ---
 
-**Last Updated:** Phase 1 Part 3 - Authentication Complete (Part 2 & 3)
+**Last Updated:** Phase 1 Part 4 - CouchDB Sync Infrastructure Complete (Part 2, 3 & 4)

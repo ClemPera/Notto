@@ -47,6 +47,9 @@ fn main() {
             commands::notes::update_note,
             commands::notes::delete_note,
             commands::notes::list_notes,
+            // Folder commands
+            commands::folders::create_folder,
+            commands::folders::list_folders,
             // Auth commands
             commands::auth::register,
             commands::auth::login,
@@ -54,6 +57,11 @@ fn main() {
             commands::auth::verify_totp_setup,
             commands::auth::verify_session_token,
             commands::auth::logout,
+            // Sync commands
+            commands::sync::initialize_sync,
+            commands::sync::start_sync,
+            commands::sync::get_sync_status,
+            commands::sync::check_connectivity,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
