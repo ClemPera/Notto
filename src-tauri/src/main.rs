@@ -41,12 +41,21 @@ fn main() {
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             greet,
+            // Note commands
             commands::notes::create_note,
             commands::notes::get_note,
             commands::notes::update_note,
             commands::notes::delete_note,
             commands::notes::list_notes,
+            // Auth commands
+            commands::auth::register,
+            commands::auth::login,
+            commands::auth::setup_totp,
+            commands::auth::verify_totp_setup,
+            commands::auth::verify_session_token,
+            commands::auth::logout,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+

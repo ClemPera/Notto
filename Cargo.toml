@@ -43,6 +43,8 @@ bip39 = "2.0"
 # TOTP 2FA
 totp-lite = "2.0"
 qrcode = "0.14"
+base64 = "0.22"
+urlencoding = "2.1"
 
 # OS keychain
 keyring = "3.6"
