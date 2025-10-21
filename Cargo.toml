@@ -9,13 +9,13 @@ tauri = { version = "2", features = [] }
 tauri-build = "2"
 
 # Database
-rusqlite = { version = "0.31", features = ["bundled", "chrono", "uuid"] }
+rusqlite = { version = "0.37", features = ["bundled", "chrono", "uuid"] }
 
 # Encryption & Security
 ring = "0.17"
 aes-gcm = "0.10"
 argon2 = "0.5"
-rand = "0.8"
+rand = "0.9.2"
 sha2 = "0.10"
 
 # Serialization
@@ -30,12 +30,12 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 
 # HTTP client for CouchDB
-reqwest = { version = "0.11", features = ["json"] }
+reqwest = { version = "0.12", features = ["json"] }
 
 # Utilities
 uuid = { version = "1.0", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
-thiserror = "1.0"
+thiserror = "2.0"
 
 # Recovery phrases
 bip39 = "2.0"
@@ -45,7 +45,7 @@ totp-lite = "2.0"
 qrcode = "0.14"
 
 # OS keychain
-keyring = "2.1"
+keyring = "3.6"
 
 [build-dependencies]
 tauri-build = "2"
