@@ -2,12 +2,9 @@ pub mod password;
 pub mod session;
 pub mod totp;
 
-use crate::models::{User, Session, TotpSecret, EncryptionParams};
+use crate::models::{EncryptionParams};
 use crate::db::DbConnection;
-use crate::crypto::{derive_key, generate_recovery_phrase};
-use argon2::{Argon2, PasswordHasher, ParamsString};
-use argon2::password_hash::{SaltString, PasswordHash, VerifyingKey};
-use argon2::password_hash::PasswordVerifier;
+use crate::crypto::generate_recovery_phrase;
 use rand::Rng;
 use sha2::{Sha256, Digest};
 use chrono::Utc;

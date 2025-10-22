@@ -1,4 +1,4 @@
-use totp_lite::{Totp, Sha1};
+use totp_lite::{totp, Sha1};
 use base64::Engine;
 use rand::Rng;
 
@@ -27,12 +27,9 @@ pub fn generate_backup_codes(count: usize) -> Vec<String> {
 
 /// Verify a TOTP code against a secret
 pub fn verify_totp_code(secret: &str, code: &str) -> Result<bool, Box<dyn std::error::Error>> {
-    // Decode base32 secret
+    // Decode base64 secret
     use base64::engine::general_purpose::STANDARD;
     let secret_bytes = STANDARD.decode(secret)?;
-
-    // Create TOTP verifier
-    let totp = Totp::<Sha1>::new(&secret_bytes, 30);
 
     // Verify code (allow for time drift of ±1 time step)
     let current_time = std::time::SystemTime::now()
@@ -43,7 +40,8 @@ pub fn verify_totp_code(secret: &str, code: &str) -> Result<bool, Box<dyn std::e
     for time_offset in -1..=1 {
         let time_step = (current_time / 30) as i64 + time_offset;
         if time_step >= 0 {
-            let expected_code = totp.generate(time_step as u64);
+            // Use totp function directly: totp::<Sha1>(secret, time_step, digits)
+            let expected_code = totp::<Sha1>(&secret_bytes, time_step as u64);
             if expected_code == code {
                 return Ok(true);
             }
@@ -57,14 +55,14 @@ pub fn verify_totp_code(secret: &str, code: &str) -> Result<bool, Box<dyn std::e
 pub fn generate_totp_code(secret: &str) -> Result<String, Box<dyn std::error::Error>> {
     use base64::engine::general_purpose::STANDARD;
     let secret_bytes = STANDARD.decode(secret)?;
-    let totp = Totp::<Sha1>::new(&secret_bytes, 30);
 
     let current_time = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
         .as_secs();
 
     let time_step = current_time / 30;
-    Ok(totp.generate(time_step))
+    // Use totp function directly
+    Ok(totp::<Sha1>(&secret_bytes, time_step))
 }
 
 /// Generate QR code data URI for TOTP setup

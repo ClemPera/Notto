@@ -1,12 +1,31 @@
 use aes_gcm::{
     aead::{Aead, KeyInit, Payload},
-    Aes256Gcm, Nonce,
+    Aes256Gcm, Nonce, Error as AesGcmError,
 };
 use rand::Rng;
 use super::EncryptionKey;
+use std::fmt;
 
 pub const NONCE_LENGTH: usize = 12; // 96 bits for GCM
 pub const TAG_LENGTH: usize = 16; // 128 bits for GCM
+
+// Wrapper for AES-GCM errors to implement std::error::Error
+#[derive(Debug)]
+pub struct EncryptionError(String);
+
+impl fmt::Display for EncryptionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Encryption error: {}", self.0)
+    }
+}
+
+impl std::error::Error for EncryptionError {}
+
+impl From<AesGcmError> for EncryptionError {
+    fn from(err: AesGcmError) -> Self {
+        EncryptionError(format!("{:?}", err))
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct EncryptedData {
@@ -78,7 +97,8 @@ pub fn encrypt(
     };
 
     // Encrypt
-    let ciphertext = cipher.encrypt(&nonce, payload)?;
+    let ciphertext = cipher.encrypt(&nonce, payload)
+        .map_err(|e| EncryptionError::from(e))?;
 
     Ok(EncryptedData {
         nonce: nonce_bytes.to_vec(),
@@ -124,7 +144,8 @@ pub fn decrypt(
     };
 
     // Decrypt
-    let plaintext = cipher.decrypt(&nonce, payload)?;
+    let plaintext = cipher.decrypt(&nonce, payload)
+        .map_err(|e| EncryptionError::from(e))?;
 
     Ok(plaintext)
 }

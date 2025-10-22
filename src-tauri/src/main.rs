@@ -7,8 +7,8 @@ mod sync;
 mod auth;
 
 use db::DbConnection;
-use std::sync::{Arc, Mutex};
 use std::path::PathBuf;
+use tauri::Manager;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -21,24 +21,29 @@ fn greet(name: &str) -> String {
 }
 
 fn main() {
-    // Initialize database
-    let app_dir = tauri::api::path::app_data_dir(&tauri::Config::default()).unwrap_or_else(|| {
-        PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".to_string()))
-    });
-
-    let db_path = app_dir.join("notto.db");
-
-    // Create directory if it doesn't exist
-    std::fs::create_dir_all(&app_dir).unwrap_or_else(|_| {
-        eprintln!("Warning: Could not create app directory");
-    });
-
-    let db = db::init(&db_path).expect("Failed to initialize database");
-
-    let app_state = AppState { db };
-
     tauri::Builder::default()
-        .manage(app_state)
+        .setup(|app| {
+            // Initialize database
+            // In Tauri v2, use app handle to get app data directory
+            let app_dir = app.path().app_data_dir()
+                .unwrap_or_else(|_| {
+                    PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".to_string()))
+                });
+
+            let db_path = app_dir.join("notto.db");
+
+            // Create directory if it doesn't exist
+            std::fs::create_dir_all(&app_dir).unwrap_or_else(|_| {
+                eprintln!("Warning: Could not create app directory");
+            });
+
+            let db = db::init(&db_path).expect("Failed to initialize database");
+
+            let app_state = AppState { db };
+            app.manage(app_state);
+
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             greet,
             // Note commands

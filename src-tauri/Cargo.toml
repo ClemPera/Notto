@@ -3,6 +3,13 @@ name = "notto"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "notto_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
 [dependencies]
 # Tauri framework
 tauri = { version = "2", features = [] }
@@ -51,6 +58,7 @@ keyring = "3.6"
 
 # Utilities
 lazy_static = "1.4"
+tauri-plugin-opener = "2.5.0"
 
 [build-dependencies]
-tauri-build = "2"
+tauri-build = { version = "2", features = [] }

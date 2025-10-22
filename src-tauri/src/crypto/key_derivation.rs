@@ -1,6 +1,6 @@
 use argon2::{
-    password_hash::{SaltString, ParamsString, Ident},
-    Argon2, ParamString, Params, Version, Algorithm,
+    password_hash::{SaltString, PasswordHasher},
+    Argon2, Params, Version, Algorithm,
 };
 use rand::Rng;
 use sha2::{Sha256, Digest};
@@ -52,26 +52,33 @@ pub fn derive_key(
         (0..16).map(|_| rng.gen::<u8>()).collect::<Vec<u8>>()
     };
 
-    // Create Argon2id hasher
-    let params = Params::new(memory, iterations, parallelism, Some(KEY_LENGTH))?;
+    // Create Argon2id hasher with parameters
+    let params = Params::new(memory, iterations, parallelism, Some(KEY_LENGTH))
+        .map_err(|e| format!("Failed to create Argon2 params: {}", e))?;
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
 
-    // Hash password
-    let password_hash = argon2.hash_password(password, &SaltString::encode_b64(&salt_bytes)?)?;
+    // Create salt string from bytes
+    let salt = SaltString::encode_b64(&salt_bytes)
+        .map_err(|e| format!("Failed to encode salt: {}", e))?;
 
-    // Extract the actual hash bytes (skip the Argon2 metadata)
+    // Hash password to get the derived key
+    let password_hash = argon2.hash_password(password.as_bytes(), &salt)
+        .map_err(|e| format!("Failed to hash password: {}", e))?;
+
+    // Extract the actual hash bytes
     let hash_str = password_hash.hash.ok_or("Failed to extract hash")?;
     let hash_bytes = hash_str.as_bytes();
 
     // Take first 32 bytes for AES-256 key
     let mut key = [0u8; KEY_LENGTH];
-    key.copy_from_slice(&hash_bytes[..KEY_LENGTH.min(hash_bytes.len())]);
-
-    // If hash is shorter than needed, derive additional bytes using SHA256
-    if hash_bytes.len() < KEY_LENGTH {
+    if hash_bytes.len() >= KEY_LENGTH {
+        key.copy_from_slice(&hash_bytes[..KEY_LENGTH]);
+    } else {
+        // If hash is shorter than needed, use it as seed for SHA256
         let mut hasher = Sha256::new();
-        hasher.update(&key);
+        hasher.update(hash_bytes);
         hasher.update(password.as_bytes());
+        hasher.update(&salt_bytes);
         let result = hasher.finalize();
         key.copy_from_slice(&result[..KEY_LENGTH]);
     }

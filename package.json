@@ -7,10 +7,13 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "tauri dev": "tauri dev",
+    "tauri build": "tauri build"
   },
   "dependencies": {
-    "@tauri-apps/api": "^1.5.3",
+    "@tauri-apps/api": "^2.9.0",
+    "@tauri-apps/plugin-opener": "^2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-markdown": "^9.0.1",
@@ -18,6 +21,7 @@
     "zustand": "^4.4.7"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.9.0",
     "@types/react": "^18.2.37",
     "@types/react-dom": "^18.2.15",
     "@vitejs/plugin-react": "^4.2.1",

@@ -14,7 +14,11 @@ Focus on good code and code maintainability.
 
 Add useful comments to code to keep it maintainable and understandable by a human without overloading it with useless stuff
 
-Try to make code that is flexible and reusable
+Try to make code that is flexible and reusable.
+
+When you do a lot of changes, you must at least build it to see if there's issues 
+
+This project use Tauri v2, use the online documentation or ask the human if you need infos
 
 # Project
 

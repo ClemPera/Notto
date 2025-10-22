@@ -51,22 +51,22 @@ pub fn delete_note(conn: &Connection, note_id: &str) -> SqliteResult<()> {
 }
 
 pub fn list_notes(conn: &Connection, user_id: &str, folder_id: Option<&str>) -> SqliteResult<Vec<String>> {
-    let query = if let Some(folder) = folder_id {
-        "SELECT id FROM notes WHERE user_id = ?1 AND folder_id = ?2 ORDER BY updated_at DESC"
+    // Handle two separate query paths to avoid lifetime issues with params macro
+    if let Some(folder) = folder_id {
+        let query = "SELECT id FROM notes WHERE user_id = ?1 AND folder_id = ?2 ORDER BY updated_at DESC";
+        let mut stmt = conn.prepare(query)?;
+        let note_ids = stmt
+            .query_map(params![user_id, folder], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(note_ids)
     } else {
-        "SELECT id FROM notes WHERE user_id = ?1 AND folder_id IS NULL ORDER BY updated_at DESC"
-    };
-
-    let mut stmt = conn.prepare(query)?;
-    let note_ids = stmt
-        .query_map(if folder_id.is_some() {
-            params![user_id, folder_id]
-        } else {
-            params![user_id]
-        }, |row| row.get::<_, String>(0))?
-        .collect::<Result<Vec<_>, _>>()?;
-
-    Ok(note_ids)
+        let query = "SELECT id FROM notes WHERE user_id = ?1 AND folder_id IS NULL ORDER BY updated_at DESC";
+        let mut stmt = conn.prepare(query)?;
+        let note_ids = stmt
+            .query_map(params![user_id], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(note_ids)
+    }
 }
 
 // ==================== Folder Operations ====================

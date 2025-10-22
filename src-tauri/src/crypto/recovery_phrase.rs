@@ -22,7 +22,8 @@ pub fn generate_recovery_phrase(password: &str) -> Result<String, Box<dyn std::e
     entropy[16..].copy_from_slice(&hash2[..16]);
 
     // Generate mnemonic (24 words)
-    let mnemonic = Mnemonic::from_entropy(&entropy, Language::English)?;
+    // In bip39 2.0, from_entropy takes only the entropy bytes
+    let mnemonic = Mnemonic::from_entropy(&entropy)?;
 
     Ok(mnemonic.to_string())
 }
