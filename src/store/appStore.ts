@@ -1,5 +1,4 @@
 import { create } from 'zustand'
-import { authCommands } from '../utils/tauri'
 
 export interface AuthState {
   token: string | null

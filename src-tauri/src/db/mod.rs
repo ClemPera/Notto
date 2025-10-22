@@ -12,10 +12,10 @@ pub fn init(db_path: &PathBuf) -> SqliteResult<DbConnection> {
     let conn = Connection::open(db_path)?;
 
     // Enable foreign keys
-    conn.execute("PRAGMA foreign_keys = ON;", [])?;
+    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
 
     // Enable WAL mode for better concurrency
-    conn.execute("PRAGMA journal_mode = WAL;", [])?;
+    conn.execute_batch("PRAGMA journal_mode = WAL;")?;
 
     // Create schema
     schema::create_tables(&conn)?;

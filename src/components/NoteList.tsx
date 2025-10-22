@@ -59,7 +59,7 @@ export const NoteList: React.FC = () => {
     if (!newFolderName.trim()) return
 
     try {
-      const response = await folderCommands.create({
+      await folderCommands.create({
         name: newFolderName,
       })
       setNewFolderName('')

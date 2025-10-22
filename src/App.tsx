@@ -11,7 +11,7 @@ type AuthView = 'login' | 'register'
 
 export const App: React.FC = () => {
   const [authView, setAuthView] = useState<AuthView>('login')
-  const { isAuthenticated, token, toggleTheme, theme, sidebar_open, toggleSidebar, logout } = useAppStore()
+  const { isAuthenticated, token, toggleTheme, theme, sidebar_open, toggleSidebar } = useAppStore()
 
   // Check if user is already authenticated on mount
   useEffect(() => {
