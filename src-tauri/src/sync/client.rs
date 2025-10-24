@@ -1,7 +1,7 @@
-use super::SyncResult;
 use super::SyncError;
-use serde::{Serialize, Deserialize};
+use super::SyncResult;
 use reqwest::{Client, StatusCode};
+use serde::{Deserialize, Serialize};
 
 /// Response from CouchDB API
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -29,7 +29,8 @@ pub struct CouchDbDocument {
 /// Check if CouchDB server is reachable
 pub async fn check_server_connectivity(server_url: &str) -> SyncResult<bool> {
     let client = Client::new();
-    match client.get(format!("{}/", server_url))
+    match client
+        .get(format!("{}/", server_url))
         .timeout(std::time::Duration::from_secs(5))
         .send()
         .await
@@ -40,11 +41,7 @@ pub async fn check_server_connectivity(server_url: &str) -> SyncResult<bool> {
 }
 
 /// Authenticate with CouchDB server
-pub async fn authenticate(
-    server_url: &str,
-    username: &str,
-    password: &str,
-) -> SyncResult<String> {
+pub async fn authenticate(server_url: &str, username: &str, password: &str) -> SyncResult<String> {
     let client = Client::new();
     let login_url = format!("{}/_session", server_url);
 
@@ -116,11 +113,7 @@ pub async fn get_user_database(
 }
 
 /// Create a new database for the user
-async fn create_user_database(
-    server_url: &str,
-    auth_token: &str,
-    db_name: &str,
-) -> SyncResult<()> {
+async fn create_user_database(server_url: &str, auth_token: &str, db_name: &str) -> SyncResult<()> {
     let client = Client::new();
     let db_url = format!("{}/{}", server_url, db_name);
 
@@ -167,7 +160,8 @@ pub async fn upload_document(
                 .await
                 .map_err(|e| SyncError::JsonError(e.to_string()))?;
 
-            body.rev.ok_or_else(|| SyncError::InvalidResponse("No revision in response".to_string()))
+            body.rev
+                .ok_or_else(|| SyncError::InvalidResponse("No revision in response".to_string()))
         }
         StatusCode::UNAUTHORIZED => Err(SyncError::AuthenticationError),
         StatusCode::CONFLICT => Err(SyncError::ConflictError("Document conflict".to_string())),
@@ -204,12 +198,10 @@ pub async fn download_document(
         .map_err(|e| SyncError::HttpError(e.to_string()))?;
 
     match response.status() {
-        StatusCode::OK => {
-            response
-                .json::<CouchDbDocument>()
-                .await
-                .map_err(|e| SyncError::JsonError(e.to_string()))
-        }
+        StatusCode::OK => response
+            .json::<CouchDbDocument>()
+            .await
+            .map_err(|e| SyncError::JsonError(e.to_string())),
         StatusCode::NOT_FOUND => Err(SyncError::ServerError("Document not found".to_string())),
         StatusCode::UNAUTHORIZED => Err(SyncError::AuthenticationError),
         _ => Err(SyncError::ServerError(format!(
@@ -248,7 +240,8 @@ pub async fn get_changes(
     let client = Client::new();
     let changes_url = format!("{}/_db/{}_changes", server_url, db_name);
 
-    let mut request = client.get(&changes_url)
+    let mut request = client
+        .get(&changes_url)
         .header("Authorization", format!("Bearer {}", auth_token))
         .query(&[("include_docs", "true")]);
 
@@ -262,12 +255,10 @@ pub async fn get_changes(
         .map_err(|e| SyncError::HttpError(e.to_string()))?;
 
     match response.status() {
-        StatusCode::OK => {
-            response
-                .json::<ChangesResponse>()
-                .await
-                .map_err(|e| SyncError::JsonError(e.to_string()))
-        }
+        StatusCode::OK => response
+            .json::<ChangesResponse>()
+            .await
+            .map_err(|e| SyncError::JsonError(e.to_string())),
         StatusCode::UNAUTHORIZED => Err(SyncError::AuthenticationError),
         _ => Err(SyncError::ServerError(format!(
             "Failed to get changes with status {}",

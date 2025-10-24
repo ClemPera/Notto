@@ -1,23 +1,28 @@
+use argon2::password_hash::{PasswordHash, SaltString};
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
-use argon2::password_hash::{SaltString, PasswordHash};
 
 /// Hash a password using Argon2id
-pub fn hash_password(password: &str, salt_bytes: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
-    let salt = SaltString::encode_b64(salt_bytes)
-        .map_err(|e| format!("Failed to encode salt: {}", e))?;
+pub fn hash_password(
+    password: &str,
+    salt_bytes: &[u8],
+) -> Result<String, Box<dyn std::error::Error>> {
+    let salt =
+        SaltString::encode_b64(salt_bytes).map_err(|e| format!("Failed to encode salt: {}", e))?;
     let argon2 = Argon2::default();
     // Pass password as bytes
-    let password_hash = argon2.hash_password(password.as_bytes(), &salt)
+    let password_hash = argon2
+        .hash_password(password.as_bytes(), &salt)
         .map_err(|e| format!("Failed to hash password: {}", e))?;
     Ok(password_hash.to_string())
 }
 
 /// Verify a password against its hash
 pub fn verify_password(password: &str, hash_str: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let parsed_hash = PasswordHash::new(hash_str)
-        .map_err(|e| format!("Failed to parse hash: {}", e))?;
+    let parsed_hash =
+        PasswordHash::new(hash_str).map_err(|e| format!("Failed to parse hash: {}", e))?;
     // Pass password as bytes
-    Argon2::default().verify_password(password.as_bytes(), &parsed_hash)
+    Argon2::default()
+        .verify_password(password.as_bytes(), &parsed_hash)
         .map_err(|e| format!("Failed to verify password: {}", e))?;
     Ok(())
 }

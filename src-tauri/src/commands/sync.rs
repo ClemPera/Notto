@@ -1,5 +1,5 @@
-use crate::AppState;
 use crate::sync::{SyncClient, SyncStatus};
+use crate::AppState;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -35,8 +35,7 @@ pub async fn initialize_sync(
     req: InitiateSyncRequest,
 ) -> Result<String, String> {
     // Verify session token
-    let user_id = crate::auth::verify_session(&state.db, &req.token)
-        .map_err(|e| e.to_string())?;
+    let user_id = crate::auth::verify_session(&state.db, &req.token).map_err(|e| e.to_string())?;
 
     // Create sync client
     let sync_client = Arc::new(SyncClient::new(
@@ -73,15 +72,11 @@ pub async fn start_sync() -> Result<SyncStatusResponse, String> {
                     message: Some("Sync started".to_string()),
                 })
             }
-            Ok(false) => {
-                Ok(SyncStatusResponse {
-                    status: "offline".to_string(),
-                    message: Some("Cannot reach sync server".to_string()),
-                })
-            }
-            Err(e) => {
-                Err(format!("Connectivity check failed: {}", e))
-            }
+            Ok(false) => Ok(SyncStatusResponse {
+                status: "offline".to_string(),
+                message: Some("Cannot reach sync server".to_string()),
+            }),
+            Err(e) => Err(format!("Connectivity check failed: {}", e)),
         }
     } else {
         Err("Sync not initialized".to_string())
@@ -99,7 +94,10 @@ pub async fn get_sync_status() -> Result<SyncStatusResponse, String> {
         let (status_str, message) = match status {
             SyncStatus::Idle => ("idle".to_string(), None),
             SyncStatus::Syncing => ("syncing".to_string(), Some("Sync in progress".to_string())),
-            SyncStatus::Success => ("success".to_string(), Some("Last sync successful".to_string())),
+            SyncStatus::Success => (
+                "success".to_string(),
+                Some("Last sync successful".to_string()),
+            ),
             SyncStatus::Error(e) => ("error".to_string(), Some(e)),
             SyncStatus::Offline => ("offline".to_string(), Some("Offline mode".to_string())),
         };

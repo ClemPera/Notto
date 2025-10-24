@@ -1,5 +1,14 @@
 # Notto Phase 1 Implementation Progress
 
+## Improvements (phase 1.5):
+- [ ] Better formating for markdown
+- [ ] title of a note is not encrypted
+
+## Others: Issues
+- [ ] Buttons doesn't work
+- [ ] notes.rs:22: userid is hardcoded
+- [ ] The content of notes does not save at all (and it's not shown on the left)
+
 ## Part 1: Foundation - ✅ COMPLETE
 
 - [x] Initialize Tauri v2 project with React + TypeScript

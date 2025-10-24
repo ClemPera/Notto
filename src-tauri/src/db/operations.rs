@@ -1,6 +1,7 @@
 use crate::models::*;
-use rusqlite::{Connection, Result as SqliteResult, params};
 use chrono::Utc;
+use rusqlite::{params, Connection, Result as SqliteResult};
+use tauri_plugin_log::log::{info, warn};
 
 // ==================== Note Operations ====================
 
@@ -20,12 +21,15 @@ pub fn create_note(
         params![&note_id, user_id, title, content, folder_id, &now, &now],
     )?;
 
+
     Ok(note_id)
 }
 
 pub fn get_note(conn: &Connection, note_id: &str) -> SqliteResult<Option<Vec<u8>>> {
     let mut stmt = conn.prepare("SELECT content FROM notes WHERE id = ?1")?;
-    let content = stmt.query_row([note_id], |row| row.get::<_, Vec<u8>>(0)).ok();
+    let content = stmt
+        .query_row([note_id], |row| row.get::<_, Vec<u8>>(0))
+        .ok();
     Ok(content)
 }
 
@@ -35,6 +39,8 @@ pub fn update_note(
     title: &str,
     content: &[u8],
 ) -> SqliteResult<()> {
+    warn!("noteid1:{note_id:?}");
+
     let now = Utc::now().to_rfc3339();
     conn.execute(
         "UPDATE notes SET title = ?1, content = ?2, updated_at = ?3, sync_version = sync_version + 1
@@ -50,10 +56,15 @@ pub fn delete_note(conn: &Connection, note_id: &str) -> SqliteResult<()> {
     Ok(())
 }
 
-pub fn list_notes(conn: &Connection, user_id: &str, folder_id: Option<&str>) -> SqliteResult<Vec<String>> {
+pub fn list_notes(
+    conn: &Connection,
+    user_id: &str,
+    folder_id: Option<&str>,
+) -> SqliteResult<Vec<String>> {
     // Handle two separate query paths to avoid lifetime issues with params macro
     if let Some(folder) = folder_id {
-        let query = "SELECT id FROM notes WHERE user_id = ?1 AND folder_id = ?2 ORDER BY updated_at DESC";
+        let query =
+            "SELECT id FROM notes WHERE user_id = ?1 AND folder_id = ?2 ORDER BY updated_at DESC";
         let mut stmt = conn.prepare(query)?;
         let note_ids = stmt
             .query_map(params![user_id, folder], |row| row.get::<_, String>(0))?
@@ -90,9 +101,7 @@ pub fn create_folder(
 }
 
 pub fn list_folders(conn: &Connection, user_id: &str) -> SqliteResult<Vec<String>> {
-    let mut stmt = conn.prepare(
-        "SELECT id FROM folders WHERE user_id = ?1 ORDER BY name"
-    )?;
+    let mut stmt = conn.prepare("SELECT id FROM folders WHERE user_id = ?1 ORDER BY name")?;
     let folder_ids = stmt
         .query_map([user_id], |row| row.get::<_, String>(0))?
         .collect::<Result<Vec<_>, _>>()?;
@@ -120,10 +129,11 @@ pub fn create_user(
     Ok(user_id)
 }
 
-pub fn get_user_by_username(conn: &Connection, username: &str) -> SqliteResult<Option<(String, String, Vec<u8>)>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, password_hash, salt FROM users WHERE username = ?1"
-    )?;
+pub fn get_user_by_username(
+    conn: &Connection,
+    username: &str,
+) -> SqliteResult<Option<(String, String, Vec<u8>)>> {
+    let mut stmt = conn.prepare("SELECT id, password_hash, salt FROM users WHERE username = ?1")?;
     let result = stmt
         .query_row([username], |row| {
             Ok((
@@ -151,7 +161,12 @@ pub fn create_session(
     conn.execute(
         "INSERT OR REPLACE INTO sessions (user_id, token, created_at, expires_at)
          VALUES (?1, ?2, ?3, ?4)",
-        params![user_id, token, created_at.to_rfc3339(), expires_at.to_rfc3339()],
+        params![
+            user_id,
+            token,
+            created_at.to_rfc3339(),
+            expires_at.to_rfc3339()
+        ],
     )?;
 
     Ok(())
@@ -159,10 +174,11 @@ pub fn create_session(
 
 pub fn get_session(conn: &Connection, token: &str) -> SqliteResult<Option<String>> {
     let now = Utc::now().to_rfc3339();
-    let mut stmt = conn.prepare(
-        "SELECT user_id FROM sessions WHERE token = ?1 AND expires_at > ?2"
-    )?;
-    let user_id = stmt.query_row(params![token, &now], |row| row.get::<_, String>(0)).ok();
+    let mut stmt =
+        conn.prepare("SELECT user_id FROM sessions WHERE token = ?1 AND expires_at > ?2")?;
+    let user_id = stmt
+        .query_row(params![token, &now], |row| row.get::<_, String>(0))
+        .ok();
 
     Ok(user_id)
 }
@@ -195,10 +211,13 @@ pub fn set_encryption_params(
     Ok(())
 }
 
-pub fn get_encryption_params(conn: &Connection, user_id: &str) -> SqliteResult<Option<EncryptionParams>> {
+pub fn get_encryption_params(
+    conn: &Connection,
+    user_id: &str,
+) -> SqliteResult<Option<EncryptionParams>> {
     let mut stmt = conn.prepare(
         "SELECT salt, argon2_memory, argon2_iterations, argon2_parallelism
-         FROM encryption_params WHERE user_id = ?1"
+         FROM encryption_params WHERE user_id = ?1",
     )?;
     let result = stmt
         .query_row([user_id], |row| {
@@ -232,10 +251,10 @@ pub fn set_recovery_phrase_hash(
 }
 
 pub fn get_recovery_phrase_hash(conn: &Connection, user_id: &str) -> SqliteResult<Option<String>> {
-    let mut stmt = conn.prepare(
-        "SELECT phrase_hash FROM recovery_phrases WHERE user_id = ?1"
-    )?;
-    let hash = stmt.query_row([user_id], |row| row.get::<_, String>(0)).ok();
+    let mut stmt = conn.prepare("SELECT phrase_hash FROM recovery_phrases WHERE user_id = ?1")?;
+    let hash = stmt
+        .query_row([user_id], |row| row.get::<_, String>(0))
+        .ok();
 
     Ok(hash)
 }

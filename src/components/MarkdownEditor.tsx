@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useAppStore } from '../store/appStore'
 import { noteCommands } from '../utils/tauri'
+import { info } from '@tauri-apps/plugin-log'
 
 export const MarkdownEditor: React.FC = () => {
   const {
@@ -20,6 +21,7 @@ export const MarkdownEditor: React.FC = () => {
     if (!current_note_id || !has_unsaved_changes) return
 
     try {
+      info("noteid4: "+current_note_id);
       await noteCommands.update(current_note_id, current_note_title, current_note_content)
       markSaved()
     } catch (error) {

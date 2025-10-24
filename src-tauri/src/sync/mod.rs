@@ -4,10 +4,10 @@ pub mod models;
 
 use crate::db::DbConnection;
 use crate::models::Note;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use chrono::{DateTime, Utc};
-use serde::{Serialize, Deserialize};
 
 /// Result type for sync operations
 pub type SyncResult<T> = Result<T, SyncError>;
@@ -73,12 +73,7 @@ pub struct SyncClient {
 
 impl SyncClient {
     /// Create a new sync client
-    pub fn new(
-        server_url: String,
-        username: String,
-        auth_token: String,
-        db: DbConnection,
-    ) -> Self {
+    pub fn new(server_url: String, username: String, auth_token: String, db: DbConnection) -> Self {
         Self {
             server_url,
             username,
@@ -147,7 +142,10 @@ impl SyncClient {
 
     /// Get local changes since last sync
     async fn get_local_changes(&self) -> SyncResult<Vec<Note>> {
-        let conn = self.db.lock().map_err(|e| SyncError::DatabaseError(e.to_string()))?;
+        let conn = self
+            .db
+            .lock()
+            .map_err(|e| SyncError::DatabaseError(e.to_string()))?;
 
         // TODO: Query database for notes with pending sync
         Ok(Vec::new())

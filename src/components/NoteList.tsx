@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useAppStore } from '../store/appStore'
 import { noteCommands, folderCommands } from '../utils/tauri'
+import { warn, debug, trace, info, error } from '@tauri-apps/plugin-log';
 
 export const NoteList: React.FC = () => {
   const [notes, setNotes] = useState<Array<{ id: string; title: string }>>([])

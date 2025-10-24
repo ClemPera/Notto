@@ -1,6 +1,6 @@
-use totp_lite::{totp, Sha1};
 use base64::Engine;
 use rand::Rng;
+use totp_lite::{totp, Sha1};
 
 /// Generate a TOTP secret for 2FA
 pub fn generate_totp_secret() -> String {
@@ -20,7 +20,13 @@ pub fn generate_backup_codes(count: usize) -> Vec<String> {
         .map(|_| {
             // Generate 8 random bytes and encode as hex
             let bytes: Vec<u8> = (0..8).map(|_| rng.gen::<u8>()).collect();
-            format!("{}", bytes.iter().map(|b| format!("{:02x}", b)).collect::<String>())
+            format!(
+                "{}",
+                bytes
+                    .iter()
+                    .map(|b| format!("{:02x}", b))
+                    .collect::<String>()
+            )
         })
         .collect()
 }
@@ -66,7 +72,11 @@ pub fn generate_totp_code(secret: &str) -> Result<String, Box<dyn std::error::Er
 }
 
 /// Generate QR code data URI for TOTP setup
-pub fn generate_totp_qr_code(username: &str, secret: &str, issuer: &str) -> Result<String, Box<dyn std::error::Error>> {
+pub fn generate_totp_qr_code(
+    username: &str,
+    secret: &str,
+    issuer: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
     use qrcode::QrCode;
 
     // Format: otpauth://totp/issuer:username?secret=...&issuer=...
@@ -79,13 +89,13 @@ pub fn generate_totp_qr_code(username: &str, secret: &str, issuer: &str) -> Resu
     );
 
     let qr_code = QrCode::new(otpauth_uri)?;
-    let image = qr_code.render::<char>()
-        .min_dimensions(200, 200)
-        .build();
+    let image = qr_code.render::<char>().min_dimensions(200, 200).build();
 
     // For now, just return the URL encoding (frontend can render with qrcode.js)
-    Ok(format!("otpauth://totp/{}:{}?secret={}&issuer={}",
-        issuer, username, secret, issuer))
+    Ok(format!(
+        "otpauth://totp/{}:{}?secret={}&issuer={}",
+        issuer, username, secret, issuer
+    ))
 }
 
 #[cfg(test)]

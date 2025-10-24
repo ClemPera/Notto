@@ -1,9 +1,9 @@
 use argon2::{
-    password_hash::{SaltString, PasswordHasher},
-    Argon2, Params, Version, Algorithm,
+    password_hash::{PasswordHasher, SaltString},
+    Algorithm, Argon2, Params, Version,
 };
 use rand::Rng;
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 
 pub const KEY_LENGTH: usize = 32; // 256 bits for AES-256
 
@@ -58,11 +58,12 @@ pub fn derive_key(
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
 
     // Create salt string from bytes
-    let salt = SaltString::encode_b64(&salt_bytes)
-        .map_err(|e| format!("Failed to encode salt: {}", e))?;
+    let salt =
+        SaltString::encode_b64(&salt_bytes).map_err(|e| format!("Failed to encode salt: {}", e))?;
 
     // Hash password to get the derived key
-    let password_hash = argon2.hash_password(password.as_bytes(), &salt)
+    let password_hash = argon2
+        .hash_password(password.as_bytes(), &salt)
         .map_err(|e| format!("Failed to hash password: {}", e))?;
 
     // Extract the actual hash bytes

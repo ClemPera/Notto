@@ -1,8 +1,8 @@
-use crate::models::Note;
-use super::SyncResult;
 use super::SyncError;
+use super::SyncResult;
+use crate::models::Note;
 use chrono::Utc;
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 
 /// Conflict detection strategy
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -16,10 +16,7 @@ pub enum ConflictStrategy {
 }
 
 /// Detect if there's a conflict between local and remote versions
-pub fn detect_conflict(
-    local: &Note,
-    remote: &Note,
-) -> SyncResult<bool> {
+pub fn detect_conflict(local: &Note, remote: &Note) -> SyncResult<bool> {
     // Conflict exists if:
     // 1. Both have different sync_versions (different modification histories)
     // 2. Both have different updated_at times
@@ -62,7 +59,8 @@ pub fn resolve_conflict(
         ConflictStrategy::CreateBoth => {
             // Create a conflict copy of the remote version
             let mut conflict_remote = remote.clone();
-            conflict_remote.id = format!("{}_conflict_{}_{}",
+            conflict_remote.id = format!(
+                "{}_conflict_{}_{}",
                 remote.id,
                 remote.sync_version,
                 Utc::now().timestamp()
@@ -82,11 +80,7 @@ pub fn hash_content(content: &str) -> String {
 }
 
 /// Three-way merge strategy for text content
-pub fn three_way_merge(
-    base: &str,
-    local: &str,
-    remote: &str,
-) -> SyncResult<String> {
+pub fn three_way_merge(base: &str, local: &str, remote: &str) -> SyncResult<String> {
     // Simple merge: if both made the same change, apply it
     // If one side modified and the other didn't, apply the modification
     // If both modified differently, keep local (conservative approach)
@@ -167,11 +161,8 @@ mod tests {
         local.updated_at = now;
         remote.updated_at = now + Duration::seconds(1); // Remote is newer
 
-        let (winner, loser) = resolve_conflict(
-            local,
-            remote.clone(),
-            ConflictStrategy::LastWriteWins,
-        ).unwrap();
+        let (winner, loser) =
+            resolve_conflict(local, remote.clone(), ConflictStrategy::LastWriteWins).unwrap();
 
         assert_eq!(winner.content, "remote");
         assert_eq!(winner.id, remote.id);
@@ -183,11 +174,8 @@ mod tests {
         let local = create_test_note("note1", "local", 1);
         let remote = create_test_note("note1", "remote", 1);
 
-        let (winner, loser) = resolve_conflict(
-            local.clone(),
-            remote,
-            ConflictStrategy::CreateBoth,
-        ).unwrap();
+        let (winner, loser) =
+            resolve_conflict(local.clone(), remote, ConflictStrategy::CreateBoth).unwrap();
 
         assert_eq!(winner.content, "local");
         assert!(loser.is_some());

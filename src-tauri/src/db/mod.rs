@@ -1,9 +1,9 @@
-pub mod schema;
 pub mod operations;
+pub mod schema;
 
 use rusqlite::{Connection, Result as SqliteResult};
-use std::sync::{Arc, Mutex};
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 pub type DbConnection = Arc<Mutex<Connection>>;
 
@@ -27,11 +27,9 @@ pub fn init(db_path: &PathBuf) -> SqliteResult<DbConnection> {
 pub fn get_conn(db: &DbConnection) -> rusqlite::Result<std::sync::MutexGuard<Connection>> {
     db.lock().map_err(|_e| {
         // In rusqlite 0.37, ToSqlConversionFailure takes only one argument (a Box<dyn Error>)
-        rusqlite::Error::ToSqlConversionFailure(
-            Box::new(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Failed to acquire database lock"
-            ))
-        )
+        rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Failed to acquire database lock",
+        )))
     })
 }

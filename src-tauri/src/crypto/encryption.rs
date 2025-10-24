@@ -1,9 +1,9 @@
+use super::EncryptionKey;
 use aes_gcm::{
     aead::{Aead, KeyInit, Payload},
-    Aes256Gcm, Nonce, Error as AesGcmError,
+    Aes256Gcm, Error as AesGcmError, Nonce,
 };
 use rand::Rng;
-use super::EncryptionKey;
 use std::fmt;
 
 pub const NONCE_LENGTH: usize = 12; // 96 bits for GCM
@@ -97,7 +97,8 @@ pub fn encrypt(
     };
 
     // Encrypt
-    let ciphertext = cipher.encrypt(&nonce, payload)
+    let ciphertext = cipher
+        .encrypt(&nonce, payload)
         .map_err(|e| EncryptionError::from(e))?;
 
     Ok(EncryptedData {
@@ -144,7 +145,8 @@ pub fn decrypt(
     };
 
     // Decrypt
-    let plaintext = cipher.decrypt(&nonce, payload)
+    let plaintext = cipher
+        .decrypt(&nonce, payload)
         .map_err(|e| EncryptionError::from(e))?;
 
     Ok(plaintext)

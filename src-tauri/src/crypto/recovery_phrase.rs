@@ -1,5 +1,5 @@
-use bip39::{Mnemonic, Language};
-use sha2::{Sha256, Digest};
+use bip39::{Language, Mnemonic};
+use sha2::{Digest, Sha256};
 
 /// Generate a BIP39 recovery phrase from a password
 ///

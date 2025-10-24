@@ -123,12 +123,30 @@ pub fn create_tables(conn: &Connection) -> SqliteResult<()> {
     )?;
 
     // Create indexes for common queries
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_notes_user ON notes(user_id)", [])?;
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_notes_folder ON notes(folder_id)", [])?;
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes(updated_at)", [])?;
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_folders_user ON folders(user_id)", [])?;
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_folders_parent ON folders(parent_id)", [])?;
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_sync_metadata_user ON sync_metadata(user_id)", [])?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_notes_user ON notes(user_id)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_notes_folder ON notes(folder_id)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes(updated_at)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_folders_user ON folders(user_id)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_folders_parent ON folders(parent_id)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sync_metadata_user ON sync_metadata(user_id)",
+        [],
+    )?;
 
     Ok(())
 }

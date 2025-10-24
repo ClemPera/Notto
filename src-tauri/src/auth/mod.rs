@@ -2,12 +2,12 @@ pub mod password;
 pub mod session;
 pub mod totp;
 
-use crate::models::{EncryptionParams};
-use crate::db::DbConnection;
 use crate::crypto::generate_recovery_phrase;
-use rand::Rng;
-use sha2::{Sha256, Digest};
+use crate::db::DbConnection;
+use crate::models::EncryptionParams;
 use chrono::Utc;
+use rand::Rng;
+use sha2::{Digest, Sha256};
 
 /// Result type for auth operations
 pub type AuthResult<T> = Result<T, AuthError>;
@@ -40,20 +40,22 @@ impl std::fmt::Display for AuthError {
 }
 
 /// Register a new user
-pub fn register(
-    db: &DbConnection,
-    username: &str,
-    password: &str,
-) -> AuthResult<(String, String)> {
+pub fn register(db: &DbConnection, username: &str, password: &str) -> AuthResult<(String, String)> {
     // Validate input
     if username.is_empty() || username.len() > 255 {
-        return Err(AuthError::InvalidInput("Username must be 1-255 characters".to_string()));
+        return Err(AuthError::InvalidInput(
+            "Username must be 1-255 characters".to_string(),
+        ));
     }
     if password.len() < 8 {
-        return Err(AuthError::InvalidInput("Password must be at least 8 characters".to_string()));
+        return Err(AuthError::InvalidInput(
+            "Password must be at least 8 characters".to_string(),
+        ));
     }
 
-    let conn = db.lock().map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+    let conn = db
+        .lock()
+        .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
 
     // Check if user already exists
     if crate::db::operations::get_user_by_username(&conn, username).is_ok()
@@ -87,8 +89,8 @@ pub fn register(
         .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
 
     // Generate and store recovery phrase
-    let recovery_phrase = generate_recovery_phrase(password)
-        .map_err(|e| AuthError::CryptoError(e.to_string()))?;
+    let recovery_phrase =
+        generate_recovery_phrase(password).map_err(|e| AuthError::CryptoError(e.to_string()))?;
 
     // Hash recovery phrase for verification on restore
     let mut hasher = Sha256::new();
@@ -102,12 +104,10 @@ pub fn register(
 }
 
 /// Login user and create session
-pub fn login(
-    db: &DbConnection,
-    username: &str,
-    password: &str,
-) -> AuthResult<String> {
-    let conn = db.lock().map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+pub fn login(db: &DbConnection, username: &str, password: &str) -> AuthResult<String> {
+    let conn = db
+        .lock()
+        .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
 
     // Get user
     let (user_id, password_hash, _salt) =
@@ -116,8 +116,7 @@ pub fn login(
             .ok_or(AuthError::UserNotFound)?;
 
     // Verify password
-    password::verify_password(password, &password_hash)
-        .map_err(|_| AuthError::InvalidPassword)?;
+    password::verify_password(password, &password_hash).map_err(|_| AuthError::InvalidPassword)?;
 
     // Create session token
     let token = session::create_session_token();
@@ -129,7 +128,9 @@ pub fn login(
 
 /// Verify session token
 pub fn verify_session(db: &DbConnection, token: &str) -> AuthResult<String> {
-    let conn = db.lock().map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+    let conn = db
+        .lock()
+        .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
 
     crate::db::operations::get_session(&conn, token)
         .map_err(|e| AuthError::DatabaseError(e.to_string()))?
@@ -138,7 +139,9 @@ pub fn verify_session(db: &DbConnection, token: &str) -> AuthResult<String> {
 
 /// Logout user by deleting session
 pub fn logout(db: &DbConnection, user_id: &str) -> AuthResult<()> {
-    let conn = db.lock().map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+    let conn = db
+        .lock()
+        .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
 
     crate::db::operations::delete_session(&conn, user_id)
         .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
@@ -154,10 +157,14 @@ pub fn change_password(
     new_password: &str,
 ) -> AuthResult<()> {
     if new_password.len() < 8 {
-        return Err(AuthError::InvalidInput("Password must be at least 8 characters".to_string()));
+        return Err(AuthError::InvalidInput(
+            "Password must be at least 8 characters".to_string(),
+        ));
     }
 
-    let conn = db.lock().map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+    let conn = db
+        .lock()
+        .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
 
     // For now, just validate and update password
     // In a real scenario, would need to re-encrypt all notes with new key

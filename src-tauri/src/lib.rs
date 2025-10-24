@@ -1,10 +1,10 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-mod db;
-mod crypto;
-mod models;
-mod commands;
-mod sync;
 mod auth;
+mod commands;
+mod crypto;
+mod db;
+mod models;
+mod sync;
 
 use db::DbConnection;
 use std::path::PathBuf;
@@ -23,14 +23,18 @@ fn greet(name: &str) -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(tauri_plugin_log::log::LevelFilter::Info)
+                .build(),
+        )
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             // Initialize database
             // In Tauri v2, use app handle to get app data directory
-            let app_dir = app.path().app_data_dir()
-                .unwrap_or_else(|_| {
-                    PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".to_string()))
-                });
+            let app_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+                PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".to_string()))
+            });
 
             let db_path = app_dir.join("notto.db");
 

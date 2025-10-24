@@ -1,5 +1,5 @@
-use crate::AppState;
 use crate::auth;
+use crate::AppState;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
@@ -54,8 +54,8 @@ pub async fn register(
     state: tauri::State<'_, AppState>,
     req: RegisterRequest,
 ) -> Result<RegisterResponse, String> {
-    let (user_id, recovery_phrase) = auth::register(&state.db, &req.username, &req.password)
-        .map_err(|e| e.to_string())?;
+    let (user_id, recovery_phrase) =
+        auth::register(&state.db, &req.username, &req.password).map_err(|e| e.to_string())?;
 
     Ok(RegisterResponse {
         user_id,
@@ -69,8 +69,7 @@ pub async fn login(
     state: tauri::State<'_, AppState>,
     req: LoginRequest,
 ) -> Result<LoginResponse, String> {
-    let token = auth::login(&state.db, &req.username, &req.password)
-        .map_err(|e| e.to_string())?;
+    let token = auth::login(&state.db, &req.username, &req.password).map_err(|e| e.to_string())?;
 
     Ok(LoginResponse { token })
 }
@@ -82,8 +81,7 @@ pub async fn setup_totp(
     req: SetupTotpRequest,
 ) -> Result<SetupTotpResponse, String> {
     // Verify session first
-    let user_id = auth::verify_session(&state.db, &req.token)
-        .map_err(|e| e.to_string())?;
+    let user_id = auth::verify_session(&state.db, &req.token).map_err(|e| e.to_string())?;
 
     // Generate TOTP secret and backup codes
     let secret = auth::totp::generate_totp_secret();
@@ -109,8 +107,7 @@ pub async fn verify_totp_setup(
     code: String,
 ) -> Result<bool, String> {
     // Verify session
-    auth::verify_session(&state.db, &token)
-        .map_err(|e| e.to_string())?;
+    auth::verify_session(&state.db, &token).map_err(|e| e.to_string())?;
 
     // Verify TOTP code
     auth::totp::verify_totp_code(&secret, &code)
@@ -123,8 +120,7 @@ pub async fn verify_session_token(
     state: tauri::State<'_, AppState>,
     token: String,
 ) -> Result<String, String> {
-    auth::verify_session(&state.db, &token)
-        .map_err(|e| e.to_string())
+    auth::verify_session(&state.db, &token).map_err(|e| e.to_string())
 }
 
 /// Logout user
@@ -133,9 +129,7 @@ pub async fn logout(
     state: tauri::State<'_, AppState>,
     user_id: String,
 ) -> Result<LogoutResponse, String> {
-    auth::logout(&state.db, &user_id)
-        .map_err(|e| e.to_string())?;
+    auth::logout(&state.db, &user_id).map_err(|e| e.to_string())?;
 
     Ok(LogoutResponse { success: true })
 }
-

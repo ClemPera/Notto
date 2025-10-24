@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 /// Sync event that occurred
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -17,7 +17,11 @@ pub enum SyncEvent {
     /// Remote note was deleted
     RemoteDeleted { note_id: String },
     /// Conflict detected between local and remote
-    Conflict { note_id: String, local_rev: u32, remote_rev: u32 },
+    Conflict {
+        note_id: String,
+        local_rev: u32,
+        remote_rev: u32,
+    },
 }
 
 /// Change tracker for local modifications

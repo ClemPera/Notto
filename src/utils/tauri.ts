@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import { info } from '@tauri-apps/plugin-log'
 
 // Type definitions for all Tauri commands
 export interface RegisterRequest {
@@ -81,8 +82,8 @@ export const authCommands = {
     return invoke('verify_session_token', { token })
   },
 
-  logout: async (user_id: string): Promise<{ success: boolean }> => {
-    return invoke('logout', { user_id })
+  logout: async (userId: string): Promise<{ success: boolean }> => {
+    return invoke('logout', { userId })
   },
 }
 
@@ -92,20 +93,20 @@ export const noteCommands = {
     return invoke('create_note', { req })
   },
 
-  get: async (note_id: string): Promise<string> => {
-    return invoke('get_note', { note_id })
+  get: async (noteId: string): Promise<string> => {
+    return invoke('get_note', { noteId })
   },
 
-  update: async (note_id: string, title: string, content: string): Promise<void> => {
-    return invoke('update_note', { note_id, title, content })
+  update: async (noteId: string, title: string, content: string): Promise<void> => {
+    return invoke('update_note', { noteId, title, content })
   },
 
-  delete: async (note_id: string): Promise<void> => {
-    return invoke('delete_note', { note_id })
+  delete: async (noteId: string): Promise<void> => {
+    return invoke('delete_note', { noteId })
   },
 
-  list: async (folder_id?: string): Promise<string[]> => {
-    return invoke('list_notes', { folder_id })
+  list: async (folderId?: string): Promise<string[]> => {
+    return invoke('list_notes', { folderId })
   },
 }
 
@@ -134,7 +135,7 @@ export const syncCommands = {
     return invoke('get_sync_status')
   },
 
-  checkConnectivity: async (server_url: string): Promise<boolean> => {
-    return invoke('check_connectivity', { server_url })
+  checkConnectivity: async (serverUrl: string): Promise<boolean> => {
+    return invoke('check_connectivity', { serverUrl })
   },
 }
