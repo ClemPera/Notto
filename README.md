@@ -1,7 +1,8 @@
-# Tauri + React + Typescript
+# Notto
 
-This template should help get you started developing with Tauri, React and Typescript in Vite.
+See [Technical infos](./technical_infos.md) file for more informations on what I'm building.
 
-## Recommended IDE Setup
+## Contribution
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+Your contribution is warmly welcome!  
+Contact me or make an issue if you want to help!
