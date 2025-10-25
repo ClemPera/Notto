@@ -1,2 +1,7 @@
-# Notto
-A cross-platform, privacy-focused note-taking application with end-to-end encryption and self-hostable sync capabilities. The application prioritizes local-first architecture with optional cloud synchronization, enabling users to maintain full control over their data.
+# Tauri + React + Typescript
+
+This template should help get you started developing with Tauri, React and Typescript in Vite.
+
+## Recommended IDE Setup
+
+- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
