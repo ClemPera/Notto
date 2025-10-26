@@ -8,6 +8,7 @@ use tauri::Manager;
 
 mod commands;
 mod db;
+mod crypt;
 
 pub struct AppState {
   database: Mutex<Connection>,
