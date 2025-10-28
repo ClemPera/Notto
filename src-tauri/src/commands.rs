@@ -18,8 +18,6 @@ impl From<Box<dyn std::error::Error>> for CommandError {
     }
 }
 
-
-
 #[tauri::command]
 pub fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
@@ -32,4 +30,13 @@ pub fn create_note(state: State<'_, AppState>, title: String) -> Result<(), Comm
     operations::create_note(&conn, title)?;
 
     Ok(())
+}
+
+#[tauri::command]
+pub fn get_note(state: State<'_, AppState>, id: u32) -> Result<String, CommandError> {
+    let conn = state.database.lock().unwrap();
+    
+    let note = operations::get_note(&conn, id)?;
+
+    Ok(note.title)
 }

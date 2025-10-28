@@ -16,6 +16,10 @@ function App() {
     await invoke("create_note", { title: "titre" }).catch((e) => console.error(e));
   }
 
+  async function get_note() {
+    await invoke("get_note", { id: 1 }).then(v => console.info(v)).catch((e) => console.error(e));
+  }
+
   return (
     <main className="container">
       <form
@@ -34,7 +38,9 @@ function App() {
       </form>
       <p>{greetMsg}</p>
 
-      <button className="h-10 w-20 bg-amber-600" onClick={create_note}>super</button>
+      <button className="h-10 w-20 bg-amber-600" onClick={create_note}>create</button>
+
+      <button className="h-10 w-20 bg-blue-600" onClick={get_note}>get</button>
     </main>
   );
 }
