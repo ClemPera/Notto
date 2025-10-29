@@ -27,7 +27,7 @@ pub fn greet(name: &str) -> String {
 pub fn create_note(state: State<'_, AppState>, title: String) -> Result<(), CommandError> {
     let conn = state.database.lock().unwrap();
     
-    operations::create_note(&conn, title)?;
+    operations::create_note(&conn, title).unwrap();
 
     Ok(())
 }
@@ -36,7 +36,7 @@ pub fn create_note(state: State<'_, AppState>, title: String) -> Result<(), Comm
 pub fn get_note(state: State<'_, AppState>, id: u32) -> Result<String, CommandError> {
     let conn = state.database.lock().unwrap();
     
-    let note = operations::get_note(&conn, id)?;
+    let note = operations::get_note(&conn, id).unwrap();
 
     Ok(note.title)
 }
