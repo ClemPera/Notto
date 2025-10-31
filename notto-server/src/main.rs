@@ -1,10 +1,13 @@
 use std::env;
 
 use axum::{extract::State, http::StatusCode, routing::{get, post, put}, Router};
+use dotenv::dotenv;
 use mysql_async::{Conn, Pool};
 
 #[tokio::main]
 async fn main() {
+    dotenv().ok();
+    //Env var should be like mysql://user:pass%20word@localhost/database_name
     let pool = Pool::new(env::var("DATABASE_URL").unwrap().as_str());
     
     let app = Router::new()
@@ -29,6 +32,8 @@ async fn create_note(State(pool): State<Pool>) -> StatusCode{
 
 async fn update_note(State(pool): State<Pool>) -> StatusCode{
     let mut conn = pool.get_conn().await.unwrap();
+
+    // let mut conn = pool.get_conn().await.unwrap();
 
     StatusCode::NOT_IMPLEMENTED
 }
