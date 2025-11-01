@@ -47,6 +47,8 @@ async fn create_note(State(pool): State<Pool>, Json(note): Json<Note>) -> Status
 }
 
 async fn update_note(State(pool): State<Pool>, Json(note): Json<Note>) -> StatusCode{
+    //TODO: add user verif
+
     let mut conn = pool.get_conn().await.unwrap();
     
     note.update(&mut conn).await;
@@ -55,6 +57,8 @@ async fn update_note(State(pool): State<Pool>, Json(note): Json<Note>) -> Status
 }
 
 async fn get_note(State(pool): State<Pool>, Query(params): Query<GetNoteParams>) -> Json<Vec<Note>>{
+    //TODO: add user verif
+
     let mut conn = pool.get_conn().await.unwrap();
 
     let notes = Note::select_all(&mut conn, params.id_user).await;
