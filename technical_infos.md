@@ -1,26 +1,30 @@
 ## Phase 1
 ### Security
-master_encryption_key = RANDOM1 (client side only)  
-recovery_key_auth = Random 25 words (client side only)  
-recovery_key_data = Random 25 different words (client side only)  
 
-salt_auth = RANDOM2  
-salt_data = RANDOM3   
-salt_recovery_auth = RANDOM4  
-salt_recovery_data = RANDOM5  
-salt_server_auth = RANDOM6
-salt_server_recovery = RANDOM7 
 
-password_hash_auth = argon2id(password, salt_auth)  
-recovery_hash_auth = argon2id(recovery_key_raw_auth, salt_recovery_auth)  
-stored_password_hash||login_hash = argon2id(password_hash_auth, salt_server_auth)
-stored_recovery_hash = argon2id(recovery_hash_auth, salt_server_recovery)
-
-password_hash_data = argon2id(password, salt_data)  
-recovery_hash_data = argon2id(recovery_key_raw_data, salt_recovery_data) (client side only)  
-
-encrypted_mek_password = AES-256-GCM(master_encryption_key, password_hash_data)  
-encrypted_mek_recovery = AES-256-GCM(master_encryption_key, recovery_hash_data)  
+| var_name | stored on client | stored on server | description |
+|--------------------------------|------------------|------------------|-------------|
+| master_encryption_key | ✓ | | Random key used to encrypt all user data |
+| recovery_key_auth | ✓ | | Random 25 words for account recovery |
+| recovery_key_data | ✓ | | Random 25 different words for data recovery |
+| salt_auth | ✓ | ✓ | Salt for deriving password_hash_auth |
+| salt_data | ✓ | ✓ | Salt for deriving password_hash_data |
+| salt_recovery_auth | ✓ | ✓ | Salt for deriving recovery_hash_auth |
+| salt_recovery_data | ✓ | ✓ | Salt for deriving recovery_hash_data |
+| salt_server_auth | ✓ | ✓ | Salt for hashing password_hash_auth before server storage |
+| salt_server_recovery | ✓ | ✓ | Salt for hashing recovery_hash_auth before server storage |
+| nonce_mek_password | ✓ | ✓ | Nonce for AES-GCM encryption of MEK with password |
+| nonce_mek_recovery | ✓ | ✓ | Nonce for AES-GCM encryption of MEK with recovery key |
+| password_hash_auth | ✓ | | argon2id(password, salt_auth) - used for authentication |
+| password_hash_data | ✓ | | argon2id(password, salt_data) - used to encrypt MEK |
+| recovery_hash_auth | ✓ | | argon2id(recovery_key_auth, salt_recovery_auth) - for account recovery |
+| recovery_hash_data | ✓ | | argon2id(recovery_key_data, salt_recovery_data) - for data recovery |
+| stored_password_hash | | ✓ | argon2id(password_hash_auth, salt_server_auth) - stored on server |
+| stored_recovery_hash | | ✓ | argon2id(recovery_hash_auth, salt_server_recovery) - stored on server |
+| login_hash | temporary | | argon2id(password_hash_auth, salt_server_auth) - sent during login |
+| recovery_login_hash | temporary | | argon2id(recovery_hash_auth, salt_server_recovery) - sent during account recovery |
+| encrypted_mek_password | ✓ | ✓ | AES-256-GCM(MEK, key: password_hash_data, nonce: nonce_mek_password) |
+| encrypted_mek_recovery | ✓ | ✓ | AES-256-GCM(MEK, key: recovery_hash_data, nonce: nonce_mek_recovery) |
 
 - Data (notes) is encrypted with `master_encryption_key` on client side, then sent to the server
 
