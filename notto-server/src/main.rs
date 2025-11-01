@@ -1,13 +1,19 @@
 use std::env;
 
-use axum::{extract::State, http::StatusCode, routing::{get, post, put}, Json, Router};
-use chrono::{DateTime, Utc};
+use axum::{Json, Router, extract::{Query, State}, http::StatusCode, routing::{get, post, put}};
 use dotenv::dotenv;
-use mysql_async::{Conn, Pool};
+use mysql_async::{Pool};
+use serde::Deserialize;
 
 use crate::schema::Note;
 
 mod schema;
+
+#[derive(Deserialize)]
+struct GetNoteParams {
+    id_user: u32,
+}
+
 
 #[tokio::main]
 async fn main() {
@@ -33,22 +39,25 @@ async fn main() {
 async fn create_note(State(pool): State<Pool>, Json(note): Json<Note>) -> StatusCode{
     //TODO: add user verif
     
-    let conn = pool.get_conn().await.unwrap();
-
-    //TODO
-    note.create(&conn);
-
-    StatusCode::NOT_IMPLEMENTED
-}
-
-async fn update_note(State(pool): State<Pool>) -> StatusCode{
     let mut conn = pool.get_conn().await.unwrap();
 
-    StatusCode::NOT_IMPLEMENTED
+    note.create(&mut conn).await;
+
+    StatusCode::OK
 }
 
-async fn get_note(State(pool): State<Pool>) -> StatusCode{
+async fn update_note(State(pool): State<Pool>, Json(note): Json<Note>) -> StatusCode{
+    let mut conn = pool.get_conn().await.unwrap();
+    
+    note.update(&mut conn).await;
+
+    StatusCode::OK
+}
+
+async fn get_note(State(pool): State<Pool>, Query(params): Query<GetNoteParams>) -> Json<Vec<Note>>{
     let mut conn = pool.get_conn().await.unwrap();
 
-    StatusCode::NOT_IMPLEMENTED
+    let notes = Note::select_all(&mut conn, params.id_user).await;
+
+    Json(notes)
 }
