@@ -6,6 +6,8 @@ use std::sync::Mutex;
 use rusqlite::Connection;
 use tauri::Manager;
 
+use crate::db::schema;
+
 mod commands;
 mod db;
 mod crypt;
@@ -32,9 +34,10 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::greet,
             commands::create_note,
-            commands::get_note
+            commands::get_note,
+            commands::init,
+            commands::create_account,
             ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

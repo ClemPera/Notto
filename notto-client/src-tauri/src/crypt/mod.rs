@@ -20,6 +20,7 @@ pub struct NoteData {
     pub created_at: DateTime<Utc>,
 }
 
+#[derive(Debug)]
 pub struct EncryptionData {
     pub master_encryption_key: Key<Aes256Gcm>,
 
@@ -32,11 +33,6 @@ pub struct EncryptionData {
     pub salt_recovery_data: SaltString,
     pub salt_server_auth: SaltString,
     pub salt_server_recovery: SaltString,
-
-    pub password_hash_auth: String,
-    pub recovery_hash_auth: String,
-    pub password_hash_data: String,
-    pub recovery_hash_data: String,
 
     pub mek_password_nonce: Vec<u8>,
     pub mek_recovery_nonce: Vec<u8>,
@@ -123,10 +119,6 @@ pub fn create_account(password: String) -> EncryptionData {
         salt_recovery_data,
         salt_server_auth,
         salt_server_recovery,
-        password_hash_auth,
-        recovery_hash_auth,
-        password_hash_data,
-        recovery_hash_data,
         mek_password_nonce: mek_password_nonce.to_vec(),
         mek_recovery_nonce:  mek_recovery_nonce.to_vec(),
         encrypted_mek_password,
@@ -139,7 +131,7 @@ pub fn create_account(password: String) -> EncryptionData {
 pub fn encrypt_note(
     title: String,
     content: String,
-    master_encryption_key: &Key<Aes256Gcm>,
+    master_encryption_key: Key<Aes256Gcm>,
 ) -> Result<schema::Note, Box<dyn std::error::Error>> {
     //Encrypt
     let nonce = Aes256Gcm::generate_nonce(&mut OsRng);

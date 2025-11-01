@@ -1,5 +1,6 @@
 use serde::Serialize;
 use tauri::State;
+use tauri_plugin_log::log::debug;
 
 use crate::AppState;
 use crate::db::operations;
@@ -19,8 +20,10 @@ impl From<Box<dyn std::error::Error>> for CommandError {
 }
 
 #[tauri::command]
-pub fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
+pub fn init(state: State<'_, AppState>) {
+    let conn = state.database.lock().unwrap();
+
+    operations::init(&conn);
 }
 
 #[tauri::command]
@@ -39,4 +42,14 @@ pub fn get_note(state: State<'_, AppState>, id: u32) -> Result<String, CommandEr
     let note = operations::get_note(&conn, id).unwrap();
 
     Ok(note.title)
+}
+
+#[tauri::command]
+pub fn create_account(state: State<'_, AppState>, username: String, password: String) -> Result<(), CommandError> {
+    let conn = state.database.lock().unwrap();
+    
+    operations::create_account(&conn, username, password);
+    debug!("account created");
+    
+    Ok(())
 }

@@ -13,16 +13,16 @@
 | salt_recovery_data | ✓ | ✓ | Salt for deriving recovery_hash_data |
 | salt_server_auth | ✓ | ✓ | Salt for hashing password_hash_auth before server storage |
 | salt_server_recovery | ✓ | ✓ | Salt for hashing recovery_hash_auth before server storage |
-| nonce_mek_password | ✓ | ✓ | Nonce for AES-GCM encryption of MEK with password |
-| nonce_mek_recovery | ✓ | ✓ | Nonce for AES-GCM encryption of MEK with recovery key |
+| mek_password_nonce | ✓ | ✓ | Nonce for AES-GCM encryption of MEK with password |
+| mek_recovery_nonce | ✓ | ✓ | Nonce for AES-GCM encryption of MEK with recovery key |
 | password_hash_auth | ✓ | | argon2id(password, salt_auth) - used for authentication |
 | password_hash_data | ✓ | | argon2id(password, salt_data) - used to encrypt MEK |
 | recovery_hash_auth | ✓ | | argon2id(recovery_key_auth, salt_recovery_auth) - for account recovery |
 | recovery_hash_data | ✓ | | argon2id(recovery_key_data, salt_recovery_data) - for data recovery |
 | stored_password_hash | | ✓ | argon2id(password_hash_auth, salt_server_auth) - stored on server |
 | stored_recovery_hash | | ✓ | argon2id(recovery_hash_auth, salt_server_recovery) - stored on server |
-| login_hash | temporary | | argon2id(password_hash_auth, salt_server_auth) - sent during login |
-| recovery_login_hash | temporary | | argon2id(recovery_hash_auth, salt_server_recovery) - sent during account recovery |
+<!-- | login_hash | temporary | | argon2id(password_hash_auth, salt_server_auth) - sent during login |
+| recovery_login_hash | temporary | | argon2id(recovery_hash_auth, salt_server_recovery) - sent during account recovery | -->
 | encrypted_mek_password | ✓ | ✓ | AES-256-GCM(MEK, key: password_hash_data, nonce: nonce_mek_password) |
 | encrypted_mek_recovery | ✓ | ✓ | AES-256-GCM(MEK, key: recovery_hash_data, nonce: nonce_mek_recovery) |
 
