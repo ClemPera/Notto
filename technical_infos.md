@@ -1,8 +1,8 @@
 ## Phase 1
 ### Security
 master_encryption_key = RANDOM1 (client side only)  
-recovery_key_raw_auth = Random 25 words (client side only)  
-recovery_key_raw_data = Random 25 different words (client side only)  
+recovery_key_auth = Random 25 words (client side only)  
+recovery_key_data = Random 25 different words (client side only)  
 
 salt_auth = RANDOM2  
 salt_data = RANDOM3   
@@ -14,7 +14,7 @@ salt_server_recovery = RANDOM7
 password_hash_auth = argon2id(password, salt_auth)  
 recovery_hash_auth = argon2id(recovery_key_raw_auth, salt_recovery_auth)  
 stored_password_hash||login_hash = argon2id(password_hash_auth, salt_server_auth)
-stored_recovery_hash = argon2id(password_hash_auth, salt_server_recovery)
+stored_recovery_hash = argon2id(recovery_hash_auth, salt_server_recovery)
 
 password_hash_data = argon2id(password, salt_data)  
 recovery_hash_data = argon2id(recovery_key_raw_data, salt_recovery_data) (client side only)  

@@ -20,3 +20,10 @@ pub fn get_note(conn: &Connection, id: u32) -> Result<NoteData, Box<dyn std::err
 
     Ok(decrypted_note)
 }
+
+pub fn create_account(conn: &Connection, password: String) {
+    let encryption_data = crypt::create_account(password);
+
+    //TODO: store info needed to local db
+    //TODO: send that to server
+}
