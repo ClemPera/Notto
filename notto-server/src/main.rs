@@ -5,13 +5,18 @@ use dotenv::dotenv;
 use mysql_async::{Pool};
 use serde::Deserialize;
 
-use crate::schema::Note;
+use crate::schema::{Note, User};
 
 mod schema;
 
 #[derive(Deserialize)]
-struct GetNoteParams {
+struct NoteParams {
     id_user: u32,
+}
+
+#[derive(Deserialize)]
+struct UserParams {
+    id: u32,
 }
 
 
@@ -22,9 +27,13 @@ async fn main() {
     let pool = Pool::new(env::var("DATABASE_URL").unwrap().as_str());
     
     let app = Router::new()
-        .route("/note", post(create_note))
+        .route("/note", post(insert_note))
         .route("/note", put(update_note))
-        .route("/note", get(get_note))
+        .route("/note", get(select_notes))
+
+        .route("/user", post(insert_user))
+        .route("/user", get(select_user))
+
         .with_state(pool);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
@@ -36,12 +45,12 @@ async fn main() {
 //     "Hello, World!"
 // }
 
-async fn create_note(State(pool): State<Pool>, Json(note): Json<Note>) -> StatusCode{
+async fn insert_note(State(pool): State<Pool>, Json(note): Json<Note>) -> StatusCode{
     //TODO: add user verif
     
     let mut conn = pool.get_conn().await.unwrap();
 
-    note.create(&mut conn).await;
+    note.insert(&mut conn).await;
 
     StatusCode::OK
 }
@@ -56,12 +65,28 @@ async fn update_note(State(pool): State<Pool>, Json(note): Json<Note>) -> Status
     StatusCode::OK
 }
 
-async fn get_note(State(pool): State<Pool>, Query(params): Query<GetNoteParams>) -> Json<Vec<Note>>{
+async fn select_notes(State(pool): State<Pool>, Query(params): Query<NoteParams>) -> Json<Vec<Note>>{
     //TODO: add user verif
 
     let mut conn = pool.get_conn().await.unwrap();
 
-    let notes = Note::select_all(&mut conn, params.id_user).await;
+    let notes = Note::select_all_from_user(&mut conn, params.id_user).await;
 
     Json(notes)
+}
+
+async fn insert_user(State(pool): State<Pool>, Json(user): Json<User>) -> StatusCode{
+    let mut conn = pool.get_conn().await.unwrap();
+
+    user.insert(&mut conn).await;
+
+    StatusCode::OK
+}
+
+async fn select_user(State(pool): State<Pool>, Query(params): Query<UserParams>) -> Json<User>{
+    let mut conn = pool.get_conn().await.unwrap();
+
+    let user = User::select(&mut conn, params.id).await;
+
+    Json(user)
 }

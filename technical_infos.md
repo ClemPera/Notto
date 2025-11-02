@@ -21,10 +21,10 @@
 | recovery_hash_data | ✓ | | argon2id(recovery_key_data, salt_recovery_data) - for data recovery |
 | stored_password_hash | | ✓ | argon2id(password_hash_auth, salt_server_auth) - stored on server |
 | stored_recovery_hash | | ✓ | argon2id(recovery_hash_auth, salt_server_recovery) - stored on server |
-<!-- | login_hash | temporary | | argon2id(password_hash_auth, salt_server_auth) - sent during login |
-| recovery_login_hash | temporary | | argon2id(recovery_hash_auth, salt_server_recovery) - sent during account recovery | -->
 | encrypted_mek_password | ✓ | ✓ | AES-256-GCM(MEK, key: password_hash_data, nonce: nonce_mek_password) |
 | encrypted_mek_recovery | ✓ | ✓ | AES-256-GCM(MEK, key: recovery_hash_data, nonce: nonce_mek_recovery) |
+<!-- | login_hash | temporary | | argon2id(password_hash_auth, salt_server_auth) - sent during login |
+| recovery_login_hash | temporary | | argon2id(recovery_hash_auth, salt_server_recovery) - sent during account recovery | -->
 
 - Data (notes) is encrypted with `master_encryption_key` on client side, then sent to the server
 
