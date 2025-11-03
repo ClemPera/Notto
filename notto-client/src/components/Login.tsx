@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 type User = {
   username: string,
-  userId: number
+  id: number
 }
 
 export default function Login() {
@@ -20,10 +20,9 @@ export default function Login() {
   return (
     <div className="flex">
       <h3 className="text-xl">Select the current user</h3>
-
       <div>
-        {users && users.map((user, index) => (
-          <div>{user.username}: {index}</div>
+        {users && users.map((user) => (
+          <div key={user.id} onClick={() => setUserId(user.id)}>{user.username}: {user.id}</div>
         ))}
       </div>
     </div>

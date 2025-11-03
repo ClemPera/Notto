@@ -3,8 +3,11 @@ import reactLogo from "./assets/react.svg";
 import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
 import Login from "./components/Login";
+import { useGeneral } from "./store/general";
 
 function App() {
+  const { userId, setUserId } = useGeneral();
+  
   // async function create_note() {
   //   await invoke("create_note", { title: "titre" }).catch((e) => console.error(e));
   // }
@@ -22,12 +25,13 @@ function App() {
   // }
   
   // useEffect(() => {
-  //   invoke("init").catch((e) => console.error(e));
-  // }, [])
+  //   console.log(userId);
+  //   // invoke("init").catch((e) => console.error(e));
+  // }, [userId])
 
   return (
       <div>
-        <Login/>
+        {userId ? "loggedIn(todo)" : <Login/> }
         {/* <button className="h-10 w-20 bg-amber-600" onClick={create_note}>create</button>
   
         <button className="h-10 w-20 bg-blue-600" onClick={get_note}>get</button>
