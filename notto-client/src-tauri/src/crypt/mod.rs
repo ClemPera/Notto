@@ -1,4 +1,4 @@
-use aes_gcm::{aead::Aead, AeadCore, Aes256Gcm, Key, KeyInit, Nonce};
+use aes_gcm::{AeadCore, Aes256Gcm, Key, KeyInit, Nonce, aead::Aead, aes::Aes256};
 use argon2::{
     password_hash::{
         rand_core::{OsRng, RngCore},
@@ -151,17 +151,11 @@ pub fn encrypt_note(
     Ok(note)
 }
 
-pub fn decrypt_note(note: schema::Note) -> Result<NoteData, Box<dyn std::error::Error>> {
-    let master_encryption_key: &[u8; 32] = &[
-        200, 177, 198, 105, 203, 59, 243, 159, 130, 46, 182, 8, 195, 75, 214, 236, 236, 168, 29,
-        157, 56, 167, 96, 197, 28, 42, 245, 123, 65, 211, 59, 54,
-    ];
-    let master_encryption_key: &Key<Aes256Gcm> = master_encryption_key.into();
-
+pub fn decrypt_note(note: schema::Note, mek: Key<Aes256Gcm>) -> Result<NoteData, Box<dyn std::error::Error>> {
     let nonce_array: [u8; 12] = note.nonce.try_into().expect("nonce must be 12 bytes");
     let nonce = Nonce::from(nonce_array);
 
-    let cipher = Aes256Gcm::new(&master_encryption_key);
+    let cipher = Aes256Gcm::new(&mek);
     let plaintext = cipher.decrypt(&nonce, note.content.as_ref()).unwrap();
     let data_unser = NoteData {
         title: note.title,

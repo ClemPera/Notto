@@ -112,7 +112,7 @@ impl User {
         Ok(user)
     }
 
-    pub fn select_all(conn: &Connection, id: u32) -> Result<Vec<User>, Box<dyn std::error::Error>> {
+    pub fn select_all(conn: &Connection) -> Result<Vec<User>, Box<dyn std::error::Error>> {
         let mut stmt = conn.prepare("SELECT * FROM user").unwrap();
 
         let rows = stmt.query_map(

@@ -1,28 +1,36 @@
+use aes_gcm::{Aes256Gcm, Key};
 use rusqlite::Connection;
+use serde::Serialize;
 use tauri_plugin_log::log::debug;
 
 use crate::{crypt::{self, NoteData}, db::schema::{Note, User}};
 
-pub fn create_note(conn: &Connection, title: String) -> Result<(), Box<dyn std::error::Error>> {
-    //TODO: add mek
-    // let note = crypt::encrypt_note(title, "blablalbla".to_string()).unwrap(); //Content empty because it's first note
+#[derive(Debug, Serialize)]
+pub struct FilteredUser {
+    pub id: u32,
+    pub username: String,
+}
 
-    // note.insert(conn).unwrap();
+pub fn create_note(conn: &Connection, title: String, mek: Key<Aes256Gcm>) -> Result<(), Box<dyn std::error::Error>> {
+    //TODO: add mek
+    let note = crypt::encrypt_note(title, "blablalbla".to_string(), mek).unwrap(); //Content empty because it's first note
+
+    note.insert(conn).unwrap();
 
     Ok(())
 }
 
-pub fn get_note(conn: &Connection, id: u32) -> Result<NoteData, Box<dyn std::error::Error>> {
+pub fn get_note(conn: &Connection, id: u32, mek: Key<Aes256Gcm>) -> Result<NoteData, Box<dyn std::error::Error>> {
     let note = Note::select(conn, id).unwrap();
 
-    let decrypted_note = crypt::decrypt_note(note).unwrap();
+    let decrypted_note = crypt::decrypt_note(note, mek).unwrap();
 
     debug!("decrypted note is: {decrypted_note:?}");
 
     Ok(decrypted_note)
 }
 
-pub fn create_account(conn: &Connection, username: String, password: String) {
+pub fn create_account(conn: &Connection, username: String, password: String) -> Result<User, Box<dyn std::error::Error>> {
     let encryption_data = crypt::create_account(password);
 
     debug!("{encryption_data:?}");
@@ -35,8 +43,20 @@ pub fn create_account(conn: &Connection, username: String, password: String) {
 
     user.insert(&conn).unwrap();
 
-    //TODO: store master_encryption_key in ram
+    Ok(user)
+
     //TODO: send that to server
+}
+
+pub fn get_users(conn: &Connection) -> Result<Vec<FilteredUser>, Box<dyn std::error::Error>> {
+    let users = User::select_all(conn).unwrap();
+
+    let filtered_users = users.iter().map(|u| FilteredUser {
+        id: u.id.unwrap(),
+        username: u.username.to_owned()
+    }).collect();
+    
+    Ok(filtered_users)
 }
 
 /// Execute when frontend load for the first time

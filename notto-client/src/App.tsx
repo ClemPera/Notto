@@ -2,32 +2,40 @@ import { useEffect, useState } from "react";
 import reactLogo from "./assets/react.svg";
 import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
+import Login from "./components/Login";
 
 function App() {
+  // async function create_note() {
+  //   await invoke("create_note", { title: "titre" }).catch((e) => console.error(e));
+  // }
 
-  async function create_note() {
-    await invoke("create_note", { title: "titre" }).catch((e) => console.error(e));
-  }
+  // async function get_note() {
+  //   await invoke("get_note", { id: 1 }).then(v => console.info(v)).catch((e) => console.error(e));
+  // }
 
-  async function get_note() {
-    await invoke("get_note", { id: 1 }).then(v => console.info(v)).catch((e) => console.error(e));
-  }
-  async function create_account() {
-    await invoke("create_account", { username: "bonjour", password: "aurevoir" }).then(v => console.info(v)).catch((e) => console.error(e));
-  }
+  // async function create_account() {
+  //   await invoke("create_account", { username: "bonjour", password: "aurevoir" }).then(v => console.info(v)).catch((e) => console.error(e));
+  // }
+
+  // async function test() {
+  //   await invoke("test", {  }).then(v => console.info(v)).catch((e) => console.error(e));
+  // }
   
-  useEffect(() => {
-    invoke("init").catch((e) => console.error(e));
-  }, [])
+  // useEffect(() => {
+  //   invoke("init").catch((e) => console.error(e));
+  // }, [])
 
   return (
-    <main className="container">
-      <button className="h-10 w-20 bg-amber-600" onClick={create_note}>create</button>
-
-      <button className="h-10 w-20 bg-blue-600" onClick={get_note}>get</button>
-
-      <button className="h-10 w-20 bg-red-600" onClick={create_account}>create_account</button>
-    </main>
+      <div>
+        <Login/>
+        {/* <button className="h-10 w-20 bg-amber-600" onClick={create_note}>create</button>
+  
+        <button className="h-10 w-20 bg-blue-600" onClick={get_note}>get</button>
+  
+        <button className="h-10 w-20 bg-red-600" onClick={create_account}>create_account</button>
+  
+        <button className="h-10 w-20 bg-slate-600" onClick={test}>test</button> */}
+      </div>
   );
 }
 

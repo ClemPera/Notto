@@ -3,6 +3,7 @@
 
 use std::sync::Mutex;
 
+use aes_gcm::{Aes256Gcm, Key};
 use rusqlite::Connection;
 use tauri::Manager;
 
@@ -14,6 +15,7 @@ mod crypt;
 
 pub struct AppState {
   database: Mutex<Connection>,
+  master_encryption_key: Option<Key<Aes256Gcm>>
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -28,9 +30,10 @@ pub fn run() {
         .setup(|app| {
             let db_path = app.path().app_data_dir().unwrap().join("notto.db");
 
-            app.manage(AppState{ 
-                database: db::init(db_path).unwrap() 
-            });
+            app.manage(Mutex::new(AppState{ 
+                database: db::init(db_path).unwrap(),
+                master_encryption_key: None
+            }));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -38,6 +41,8 @@ pub fn run() {
             commands::get_note,
             commands::init,
             commands::create_account,
+            commands::test,
+            commands::get_users
             ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
