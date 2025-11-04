@@ -7,7 +7,7 @@ use argon2::{
     Argon2,
 };
 use bip39::Language;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tauri_plugin_log::log::{debug, info};
 
@@ -17,7 +17,7 @@ use crate::db::schema;
 pub struct NoteData {
     pub title: String,
     pub content: String,
-    pub created_at: DateTime<Utc>,
+    pub created_at: NaiveDateTime,
 }
 
 #[derive(Debug)]
@@ -129,10 +129,9 @@ pub fn create_account(password: String) -> EncryptionData {
 }
 
 pub fn encrypt_note(
-    title: String,
     content: String,
     master_encryption_key: Key<Aes256Gcm>,
-) -> Result<schema::Note, Box<dyn std::error::Error>> {
+) -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>> {
     //Encrypt
     let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
 
@@ -140,15 +139,7 @@ pub fn encrypt_note(
 
     let ciphertext = cipher.encrypt(&nonce, content.as_bytes()).unwrap();
 
-    let note = schema::Note {
-        id: None,
-        title: title,
-        content: ciphertext,
-        nonce: nonce.to_vec(),
-        created_at: None,
-    };
-
-    Ok(note)
+    Ok((ciphertext, nonce.to_vec()))
 }
 
 pub fn decrypt_note(note: schema::Note, mek: Key<Aes256Gcm>) -> Result<NoteData, Box<dyn std::error::Error>> {

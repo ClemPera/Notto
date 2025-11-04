@@ -15,7 +15,8 @@ mod crypt;
 
 pub struct AppState {
   database: Mutex<Connection>,
-  master_encryption_key: Option<Key<Aes256Gcm>>
+  master_encryption_key: Option<Key<Aes256Gcm>>,
+  id_user: Option<u32>
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -32,17 +33,20 @@ pub fn run() {
 
             app.manage(Mutex::new(AppState{ 
                 database: db::init(db_path).unwrap(),
-                master_encryption_key: None
+                master_encryption_key: None,
+                id_user: None,
             }));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::init,
             commands::create_note,
             commands::get_note,
-            commands::init,
+            commands::get_all_notes_metadata,
             commands::create_account,
+            commands::get_users,
+            commands::set_user,
             commands::test,
-            commands::get_users
             ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

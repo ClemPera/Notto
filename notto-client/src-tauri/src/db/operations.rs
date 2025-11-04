@@ -5,17 +5,21 @@ use tauri_plugin_log::log::debug;
 
 use crate::{crypt::{self, NoteData}, db::schema::{Note, User}};
 
-#[derive(Debug, Serialize)]
-pub struct FilteredUser {
-    pub id: u32,
-    pub username: String,
-}
 
-pub fn create_note(conn: &Connection, title: String, mek: Key<Aes256Gcm>) -> Result<(), Box<dyn std::error::Error>> {
+pub fn create_note(conn: &Connection, id_user: u32, title: String, mek: Key<Aes256Gcm>) -> Result<(), Box<dyn std::error::Error>> {
     //TODO: add mek
-    let note = crypt::encrypt_note(title, "blablalbla".to_string(), mek).unwrap(); //Content empty because it's first note
+    let (content, nonce) = crypt::encrypt_note("blablalbla".to_string(), mek).unwrap(); //Content empty because it's first note
 
-    note.insert(conn).unwrap();
+    let note = Note {
+        id: None,
+        id_user: Some(id_user),
+        content,
+        nonce,
+        title: title,
+        created_at: None,
+    };
+
+    note.insert(conn,).unwrap();
 
     Ok(())
 }
@@ -28,6 +32,12 @@ pub fn get_note(conn: &Connection, id: u32, mek: Key<Aes256Gcm>) -> Result<NoteD
     debug!("decrypted note is: {decrypted_note:?}");
 
     Ok(decrypted_note)
+}
+
+pub fn get_notes(conn: &Connection, id_user: u32) -> Result<Vec<Note>, Box<dyn std::error::Error>> {
+    let notes = Note::select_all(conn, id_user).unwrap();
+
+    Ok(notes)
 }
 
 pub fn create_account(conn: &Connection, username: String, password: String) -> Result<User, Box<dyn std::error::Error>> {
@@ -44,22 +54,22 @@ pub fn create_account(conn: &Connection, username: String, password: String) -> 
     user.insert(&conn).unwrap();
 
     Ok(user)
-
+    
     //TODO: send that to server
 }
 
-pub fn get_users(conn: &Connection) -> Result<Vec<FilteredUser>, Box<dyn std::error::Error>> {
+pub fn get_user(conn: &Connection, id: u32) -> Result<User, Box<dyn std::error::Error>> {
+    let user = User::select(conn, id).unwrap();
+
+    Ok(user)
+}
+
+pub fn get_users(conn: &Connection) -> Result<Vec<User>, Box<dyn std::error::Error>> {
     let users = User::select_all(conn).unwrap();
 
-    let filtered_users = users.iter().map(|u| FilteredUser {
-        id: u.id.unwrap(),
-        username: u.username.to_owned()
-    }).collect();
-    
-    Ok(filtered_users)
+    Ok(users)
 }
 
 /// Execute when frontend load for the first time
 pub fn init(conn: &Connection) {
-    User::create(&conn).unwrap();
 }
