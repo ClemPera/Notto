@@ -23,14 +23,20 @@ export default function Login() {
     setUserId(id);
   }
 
+  async function create_account() {
+    await invoke("create_account", { username: "bonjour", password: "aurevoir" }).then(v => console.info(v)).catch((e) => console.error(e));
+  }
+
   return (
     <div className="flex flex-col gap-1">
+      <button className="h-10 w-min p-2 bg-red-600 cursor-pointer" onClick={create_account}>create_account</button>
+
       <h3 className="text-xl">Select the current user</h3>
       <div className="flex flex-row gap-1">
         {users && users.map((user) => (
           <div key={user.id} 
             onClick={() => selectUser(user.id)}
-            className="bg-amber-600">
+            className="bg-amber-600 p-2 cursor-pointer">
               {user.username}: {user.id}
           </div>
         ))}

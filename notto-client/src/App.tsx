@@ -9,21 +9,9 @@ import Home from "./components/Home";
 function App() {
   const { userId, setUserId } = useGeneral();
   
-  async function create_note() {
-    await invoke("create_note", { title: "titre" }).catch((e) => console.error(e));
-  }
-
-  async function get_note() {
-    await invoke("get_note", { id: 1 }).then(v => console.info(v)).catch((e) => console.error(e));
-  }
-
-  async function create_account() {
-    await invoke("create_account", { username: "bonjour", password: "aurevoir" }).then(v => console.info(v)).catch((e) => console.error(e));
-  }
-
-  async function test() {
-    await invoke("test", {  }).then(v => console.info(v)).catch((e) => console.error(e));
-  }
+  // async function test() {
+  //   await invoke("test", {  }).then(v => console.info(v)).catch((e) => console.error(e));
+  // }
   
   useEffect(() => {
     console.log(userId);
@@ -32,15 +20,9 @@ function App() {
 
   return (
       <div>
-        {userId ? <Home/> : <Login/> }
-        
-        <button className="h-10 w-20 bg-amber-600" onClick={create_note}>create</button>
+        {userId ? ( <Home/> ) : ( <Login/> ) }
   
-        <button className="h-10 w-20 bg-blue-600" onClick={get_note}>get</button>
-  
-        <button className="h-10 w-20 bg-red-600" onClick={create_account}>create_account</button>
-  
-        <button className="h-10 w-20 bg-slate-600" onClick={test}>test</button>
+        {/* <button className="h-10 w-20 bg-slate-600" onClick={test}>test</button> */}
       </div>
   );
 }

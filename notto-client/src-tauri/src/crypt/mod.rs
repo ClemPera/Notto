@@ -13,8 +13,9 @@ use tauri_plugin_log::log::{debug, info};
 
 use crate::db::schema;
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct NoteData {
+    pub id: u32,
     pub title: String,
     pub content: String,
     pub created_at: NaiveDateTime,
@@ -149,6 +150,7 @@ pub fn decrypt_note(note: schema::Note, mek: Key<Aes256Gcm>) -> Result<NoteData,
     let cipher = Aes256Gcm::new(&mek);
     let plaintext = cipher.decrypt(&nonce, note.content.as_ref()).unwrap();
     let data_unser = NoteData {
+        id: note.id.unwrap(),
         title: note.title,
         content: String::from_utf8(plaintext).unwrap(),
         created_at: note.created_at.unwrap(),

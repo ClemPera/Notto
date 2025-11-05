@@ -42,6 +42,7 @@ pub fn run() {
             commands::init,
             commands::create_note,
             commands::get_note,
+            commands::edit_note,
             commands::get_all_notes_metadata,
             commands::create_account,
             commands::get_users,

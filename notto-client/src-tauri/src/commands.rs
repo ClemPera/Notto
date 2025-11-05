@@ -6,6 +6,7 @@ use tauri::State;
 use tauri_plugin_log::log::debug;
 
 use crate::AppState;
+use crate::crypt::NoteData;
 use crate::db::operations::{self};
 use crate::db::schema::{Note, User};
 
@@ -76,14 +77,26 @@ pub fn create_note(state: State<'_, Mutex<AppState>>, title: String) -> Result<(
 }
 
 #[tauri::command]
-pub fn get_note(state: State<'_, Mutex<AppState>>, id: u32) -> Result<String, CommandError> {
+pub fn get_note(state: State<'_, Mutex<AppState>>, id: u32) -> Result<NoteData, CommandError> {
     let state = state.lock().unwrap();
 
     let conn = state.database.lock().unwrap();
     
     let note = operations::get_note(&conn, id, state.master_encryption_key.unwrap()).unwrap();
 
-    Ok(note.title)
+    Ok(note)
+}
+
+#[tauri::command]
+pub fn edit_note(state: State<'_, Mutex<AppState>>, note: NoteData) -> Result<(), CommandError> {
+    let state = state.lock().unwrap();
+
+    let conn = state.database.lock().unwrap();
+    
+
+    operations::update_note(&conn, note, state.master_encryption_key.unwrap()).unwrap();
+
+    Ok(())
 }
 
 #[tauri::command(rename_all = "snake_case")]

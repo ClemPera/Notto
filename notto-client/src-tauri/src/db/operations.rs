@@ -7,7 +7,6 @@ use crate::{crypt::{self, NoteData}, db::schema::{Note, User}};
 
 
 pub fn create_note(conn: &Connection, id_user: u32, title: String, mek: Key<Aes256Gcm>) -> Result<(), Box<dyn std::error::Error>> {
-    //TODO: add mek
     let (content, nonce) = crypt::encrypt_note("blablalbla".to_string(), mek).unwrap(); //Content empty because it's first note
 
     let note = Note {
@@ -15,7 +14,7 @@ pub fn create_note(conn: &Connection, id_user: u32, title: String, mek: Key<Aes2
         id_user: Some(id_user),
         content,
         nonce,
-        title: title,
+        title,
         created_at: None,
     };
 
@@ -38,6 +37,23 @@ pub fn get_notes(conn: &Connection, id_user: u32) -> Result<Vec<Note>, Box<dyn s
     let notes = Note::select_all(conn, id_user).unwrap();
 
     Ok(notes)
+}
+
+pub fn update_note(conn: &Connection, note_data: NoteData, mek: Key<Aes256Gcm>) -> Result<(), Box<dyn std::error::Error>> {
+    let (content, nonce) = crypt::encrypt_note(note_data.content, mek).unwrap();
+    
+    let note = Note {
+        id: Some(note_data.id),
+        id_user: None,
+        title: note_data.title,
+        content,
+        nonce,
+        created_at: None,
+    };
+    
+    note.update(conn).unwrap();
+    
+    Ok(())
 }
 
 pub fn create_account(conn: &Connection, username: String, password: String) -> Result<User, Box<dyn std::error::Error>> {

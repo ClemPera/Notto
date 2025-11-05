@@ -3,6 +3,8 @@ use chrono::NaiveDateTime;
 use rusqlite::Connection;
 use tauri_plugin_log::log::debug;
 
+use crate::crypt::NoteData;
+
 #[derive(Debug)]
 pub struct Note {
     pub id: Option<u32>,
@@ -39,7 +41,7 @@ impl Note {
         Ok(())
     }
 
-    pub fn select(conn: &Connection, id: u32) -> Result<Note, Box<dyn std::error::Error>> {
+    pub fn select(conn: &Connection, id: u32) -> Result<Self, Box<dyn std::error::Error>> {
         let note = conn.query_one(
             "SELECT * FROM note WHERE id = ?", 
             (id,),
@@ -58,7 +60,7 @@ impl Note {
         Ok(note)
     }
 
-    pub fn select_all(conn: &Connection, id_user: u32) -> Result<Vec<Note>, Box<dyn std::error::Error>> {
+    pub fn select_all(conn: &Connection, id_user: u32) -> Result<Vec<Self>, Box<dyn std::error::Error>> {
         let mut stmt = conn.prepare("SELECT * FROM note WHERE id_user = ?").unwrap();
 
         let rows = stmt.query_map(
@@ -85,9 +87,11 @@ impl Note {
     }
 
     pub fn update(&self, conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
-        Err(Box::from("Not implemented yet, consider versioning"))
+        conn.execute("UPDATE note SET title = ?, content = ?, nonce = ? WHERE id = ?",
+            (&self.title, &self.content, &self.nonce, &self.id))?;
+
+        Ok(())
     }
-    
 }
 
 #[derive(Debug)]
@@ -122,7 +126,7 @@ impl User {
         Ok(())
     }
 
-    pub fn select(conn: &Connection, id: u32) -> Result<User, Box<dyn std::error::Error>> {
+    pub fn select(conn: &Connection, id: u32) -> Result<Self, Box<dyn std::error::Error>> {
         let user = conn.query_one(
             "SELECT id, username, master_encryption_key FROM user WHERE id = ?", 
             (id,),
@@ -142,7 +146,7 @@ impl User {
         Ok(user)
     }
 
-    pub fn select_all(conn: &Connection) -> Result<Vec<User>, Box<dyn std::error::Error>> {
+    pub fn select_all(conn: &Connection) -> Result<Vec<Self>, Box<dyn std::error::Error>> {
         let mut stmt = conn.prepare("SELECT * FROM user").unwrap();
 
         let rows = stmt.query_map(
