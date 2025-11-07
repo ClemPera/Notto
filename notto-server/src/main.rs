@@ -31,8 +31,18 @@ async fn main() {
         .route("/note", put(update_note))
         .route("/note", get(select_notes))
 
-        .route("/user", post(insert_user))
-        .route("/user", get(select_user))
+        .route("/create_account", post(insert_user)) //Create account
+
+        .route("/user", put()) //Update user
+        
+        .route("/login", get()) //Request login
+        .route("/login", post()) //Check login hash
+        
+        .route("/user_recovery", get()) //Request recovery stuff
+        .route("/user_recovery", post()) //check recovery hash
+        
+        .route("/data_recovery", get()) //Request recovery stuff
+        .route("/data_recovery", post()) //store new recovery stuff
 
         .with_state(pool);
 

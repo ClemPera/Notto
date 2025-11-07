@@ -51,7 +51,7 @@ impl Note {
             )).await.unwrap();
     }
 
-    pub async fn select_all_from_user(conn: &mut Conn, id_user: u32) -> Vec<Note> {
+    pub async fn select_all_from_user(conn: &mut Conn, id_user: u32) -> Vec<Self> {
         conn.exec("SELECT * FROM note WHERE id_user = :id_user",
             params!(
                 "id_user" => id_user
@@ -124,8 +124,45 @@ impl User {
             )).await.unwrap();
     }
 
-    pub async fn select(conn: &mut Conn, id: u32) -> User {
-        conn.exec_first("SELECT * FROM note WHERE id_user = :id_user",
+    pub async fn select(conn: &mut Conn, id: u32) -> Self {
+        conn.exec_first("SELECT * FROM user WHERE id_user = :id_user",
+            params!(
+                "id" => id
+            )).await.unwrap().unwrap()
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct UserToken {
+    pub id: Option<u32>,
+    pub id_user: u32,
+    pub token: String
+}
+
+impl FromRow for UserToken {
+    fn from_row_opt(row: Row) -> Result<Self, FromRowError> {
+        Ok(UserToken {
+            id: row.get(0).ok_or(FromRowError(row.clone()))?,
+            id_user: row.get(1).ok_or(FromRowError(row.clone()))?,
+            token: row.get(2).ok_or(FromRowError(row.clone()))?,
+        })
+    }
+}
+
+impl UserToken {
+    //TODO: pub async fn create(&self, conn: &mut Conn) {}
+
+    pub async fn insert(&self, conn: &mut Conn) {
+        conn.exec_drop("INSERT INTO user_token (id_user, token) 
+            VALUES (:id_user, :token)", 
+            params!(
+                "id_user" => &self.id_user,
+                "token" => &self.token,
+            )).await.unwrap();
+    }
+
+    pub async fn select(conn: &mut Conn, id: u32) -> Self {
+        conn.exec_first("SELECT * FROM user_token WHERE id_user = :id_user",
             params!(
                 "id" => id
             )).await.unwrap().unwrap()
