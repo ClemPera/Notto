@@ -12,6 +12,7 @@ use crate::db::schema;
 mod commands;
 mod db;
 mod crypt;
+mod sync;
 
 pub struct AppState {
   database: Mutex<Connection>,

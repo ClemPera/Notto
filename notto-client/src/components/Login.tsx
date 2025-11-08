@@ -24,7 +24,8 @@ export default function Login() {
   }
 
   async function create_account() {
-    await invoke("create_account", { username: "bonjour", password: "aurevoir" }).then(v => console.info(v)).catch((e) => console.error(e));
+    await invoke("create_account", { username: "bonjour", password: "aurevoir" })
+      .then(v => console.info(v)).catch((e) => console.error(e));
   }
 
   return (

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useGeneral } from "../store/general";
 import { invoke } from "@tauri-apps/api/core";
+import Sync from "./Sync";
 
 type Note = {
   id: number
@@ -81,6 +82,8 @@ export default function Home() {
             </div>
           ))}
         </div>
+        <br/>
+        <Sync/>
       </div>
         {currentNote ? (
           <div className="flex flex-col grow">

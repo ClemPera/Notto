@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 mod schema;
 
 #[derive(Deserialize)]
-struct NoteParams {
+struct SelectNoteParams {
     id_user: u32,
     token: Vec<u8>
 }
@@ -26,7 +26,7 @@ struct Note {
 }
 
 #[derive(Deserialize)]
-struct UserParams {
+struct UserRequestParams {
     id_user: u32,
 }
 
@@ -37,13 +37,13 @@ struct LoginRequest {
 }
 
 #[derive(Deserialize)]
-struct Login {
+struct LoginParams {
     id_user: u32,
     login_hash: String,
 }
 
 #[derive(Serialize)]
-struct LoginResponse {
+struct Login {
     salt_data: String,
     encrypted_mek_password: Vec<u8>,
     token: Vec<u8>,
@@ -105,7 +105,7 @@ async fn update_note(State(pool): State<Pool>, Json(note): Json<Note>) -> Result
 
 async fn select_notes(
     State(pool): State<Pool>,
-    Query(params): Query<NoteParams>,
+    Query(params): Query<SelectNoteParams>,
 ) -> Result<Json<Vec<schema::Note>>, StatusCode> {
     let mut conn = pool.get_conn().await.unwrap();
     user_verify(&mut conn, params.id_user, params.token).await?;
@@ -123,11 +123,11 @@ async fn insert_user(State(pool): State<Pool>, Json(user): Json<schema::User>) {
 
 async fn login_request(
     State(pool): State<Pool>,
-    Query(param): Query<UserParams>,
+    Query(params): Query<UserRequestParams>,
 ) -> Json<LoginRequest> {
     let mut conn = pool.get_conn().await.unwrap();
 
-    let user = schema::User::select(&mut conn, param.id_user).await;
+    let user = schema::User::select(&mut conn, params.id_user).await;
 
     Json(LoginRequest {
         salt_auth: user.salt_auth,
@@ -138,14 +138,14 @@ async fn login_request(
 #[axum::debug_handler]
 async fn login(
     State(pool): State<Pool>,
-    Json(param): Json<Login>,
-) -> Result<Json<LoginResponse>, StatusCode> {
+    Json(params): Json<LoginParams>,
+) -> Result<Json<Login>, StatusCode> {
     let mut conn = pool.get_conn().await.unwrap();
 
     //Check if login_hash is correct
-    let user = schema::User::select(&mut conn, param.id_user).await;
+    let user = schema::User::select(&mut conn, params.id_user).await;
 
-    if param.login_hash != user.stored_password_hash {
+    if params.login_hash != user.stored_password_hash {
         return Err(StatusCode::UNAUTHORIZED);
     }
 
@@ -157,14 +157,14 @@ async fn login(
     //Store token
     let user_token = schema::UserToken {
         id: None,
-        id_user: param.id_user,
+        id_user: params.id_user,
         token,
     };
 
     user_token.insert(&mut conn).await;
 
     //Response
-    Ok(Json(LoginResponse {
+    Ok(Json(Login {
         salt_data: user.salt_data,
         encrypted_mek_password: user.encrypted_mek_password,
         token: user_token.token,
