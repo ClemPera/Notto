@@ -136,7 +136,7 @@ impl User {
 pub struct UserToken {
     pub id: Option<u32>,
     pub id_user: u32,
-    pub token: String
+    pub token: Vec<u8>
 }
 
 impl FromRow for UserToken {
