@@ -56,8 +56,8 @@ pub fn update_note(conn: &Connection, note_data: NoteData, mek: Key<Aes256Gcm>) 
     Ok(())
 }
 
-pub fn create_account(conn: &Connection, username: String, password: String) -> Result<User, Box<dyn std::error::Error>> {
-    let encryption_data = crypt::create_account(password);
+pub fn create_user(conn: &Connection, username: String, password: String) -> Result<User, Box<dyn std::error::Error>> {
+    let encryption_data = crypt::create_user(password);
 
     debug!("{encryption_data:?}");
 

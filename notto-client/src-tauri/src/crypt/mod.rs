@@ -45,7 +45,7 @@ pub struct EncryptionData {
     pub stored_recovery_hash: String,
 }
 
-pub fn create_account(password: String) -> EncryptionData {
+pub fn create_user(password: String) -> EncryptionData {
     //Generate encryption key
     // let master_encryption_key: &[u8; 32] = &[200, 177, 198, 105, 203, 59, 243, 159, 130, 46, 182, 8, 195, 75, 214, 236, 236, 168, 29, 157, 56, 167, 96, 197, 28, 42, 245, 123, 65, 211, 59, 54];
     let master_encryption_key: Key<Aes256Gcm> = Aes256Gcm::generate_key(OsRng).into();

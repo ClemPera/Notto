@@ -113,18 +113,18 @@ pub fn get_all_notes_metadata(state: State<'_, Mutex<AppState>>, id_user: u32) -
 }
 
 #[tauri::command]
-pub fn create_account(state: State<'_, Mutex<AppState>>, username: String, password: String) -> Result<(), CommandError> {
+pub fn create_user(state: State<'_, Mutex<AppState>>, username: String, password: String) -> Result<(), CommandError> {
     let mut state = state.lock().unwrap();
 
     let user = {
         let conn = state.database.lock().unwrap();
-        operations::create_account(&conn, username, password).unwrap()
+        operations::create_user(&conn, username, password).unwrap()
     };
 
     state.master_encryption_key = Some(user.master_encryption_key);
     state.id_user = user.id;
 
-    debug!("account created");
+    debug!("user created");
     
     Ok(())
 }
