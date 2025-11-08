@@ -7,17 +7,22 @@ use axum::{
     routing::{get, post, put},
 };
 use dotenv::dotenv;
-use mysql_async::Pool;
+use mysql_async::{Conn, Pool};
 use rand_core::{OsRng, TryRngCore};
 use serde::{Deserialize, Serialize};
-
-use crate::schema::{Note, User, UserToken};
 
 mod schema;
 
 #[derive(Deserialize)]
 struct NoteParams {
     id_user: u32,
+    token: Vec<u8>
+}
+
+#[derive(Deserialize)]
+struct Note {
+    note: schema::Note,
+    token: Vec<u8>
 }
 
 #[derive(Deserialize)]
@@ -68,45 +73,52 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn insert_note(State(pool): State<Pool>, Json(note): Json<Note>) -> StatusCode {
-    //TODO: add user verif
+async fn user_verify(conn: &mut Conn , id: u32, token: Vec<u8>) -> Result<(), StatusCode> {
+    let user_token = schema::UserToken::select(conn, id).await;
 
-    let mut conn = pool.get_conn().await.unwrap();
-
-    note.insert(&mut conn).await;
-
-    StatusCode::OK
+    if user_token.token == token {
+        Ok(())
+    }else{
+        Err(StatusCode::FORBIDDEN)
+    }
 }
 
-async fn update_note(State(pool): State<Pool>, Json(note): Json<Note>) -> StatusCode {
-    //TODO: add user verif
-
+async fn insert_note(State(pool): State<Pool>, Json(note): Json<Note>) -> Result<StatusCode, StatusCode> {
     let mut conn = pool.get_conn().await.unwrap();
 
-    note.update(&mut conn).await;
+    user_verify(&mut conn, note.note.id_user, note.token).await?;
 
-    StatusCode::OK
+    note.note.insert(&mut conn).await;
+
+    Ok(StatusCode::OK)
+}
+
+async fn update_note(State(pool): State<Pool>, Json(note): Json<Note>) -> Result<StatusCode, StatusCode> {
+    let mut conn = pool.get_conn().await.unwrap();
+
+    user_verify(&mut conn, note.note.id_user, note.token).await?;
+
+    note.note.update(&mut conn).await;
+
+    Ok(StatusCode::OK)
 }
 
 async fn select_notes(
     State(pool): State<Pool>,
     Query(params): Query<NoteParams>,
-) -> Json<Vec<Note>> {
-    //TODO: add user verif
-
+) -> Result<Json<Vec<schema::Note>>, StatusCode> {
     let mut conn = pool.get_conn().await.unwrap();
+    user_verify(&mut conn, params.id_user, params.token).await?;
 
-    let notes = Note::select_all_from_user(&mut conn, params.id_user).await;
+    let notes = schema::Note::select_all_from_user(&mut conn, params.id_user).await;
 
-    Json(notes)
+    Ok(Json(notes))
 }
 
-async fn insert_user(State(pool): State<Pool>, Json(user): Json<User>) -> StatusCode {
+async fn insert_user(State(pool): State<Pool>, Json(user): Json<schema::User>) {
     let mut conn = pool.get_conn().await.unwrap();
 
     user.insert(&mut conn).await;
-
-    StatusCode::OK
 }
 
 async fn login_request(
@@ -115,7 +127,7 @@ async fn login_request(
 ) -> Json<LoginRequest> {
     let mut conn = pool.get_conn().await.unwrap();
 
-    let user = User::select(&mut conn, param.id_user).await;
+    let user = schema::User::select(&mut conn, param.id_user).await;
 
     Json(LoginRequest {
         salt_auth: user.salt_auth,
@@ -131,7 +143,7 @@ async fn login(
     let mut conn = pool.get_conn().await.unwrap();
 
     //Check if login_hash is correct
-    let user = User::select(&mut conn, param.id_user).await;
+    let user = schema::User::select(&mut conn, param.id_user).await;
 
     if param.login_hash != user.stored_password_hash {
         return Err(StatusCode::UNAUTHORIZED);
@@ -143,7 +155,7 @@ async fn login(
 
 
     //Store token
-    let user_token = UserToken {
+    let user_token = schema::UserToken {
         id: None,
         id_user: param.id_user,
         token,
@@ -152,7 +164,6 @@ async fn login(
     user_token.insert(&mut conn).await;
 
     //Response
-
     Ok(Json(LoginResponse {
         salt_data: user.salt_data,
         encrypted_mek_password: user.encrypted_mek_password,
