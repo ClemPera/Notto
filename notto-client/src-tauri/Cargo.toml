@@ -18,6 +18,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+shared = { path = "../../shared" }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2.5.2"
 serde = { version = "1.0", features = ["derive"] }
@@ -28,3 +29,4 @@ argon2 = { version = "0.5.3", features = ["std"] }
 aes-gcm = "0.10.3"
 chrono = { version="0.4.42", features = ["serde"] }
 bip39 = { version="2.2.0", features = ["rand"] }
+reqwest = "0.12.24"
