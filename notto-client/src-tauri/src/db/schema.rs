@@ -5,6 +5,8 @@ use tauri_plugin_log::log::debug;
 
 use crate::crypt::NoteData;
 
+use rusqlite::Error::QueryReturnedNoRows;
+
 #[derive(Debug)]
 pub struct Note {
     pub id: Option<u32>,
@@ -101,6 +103,11 @@ pub struct User {
 
     //TODO: Do not store that in plain text but use give the user the possibility to use biometric to decrypt
     pub master_encryption_key: Key<Aes256Gcm>, 
+
+    //This will be send to the server
+    pub salt_recovery_data: String,
+    pub mek_recovery_nonce: Vec<u8>,
+    pub encrypted_mek_recovery: Vec<u8>
 }
 
 impl User {
@@ -109,7 +116,10 @@ impl User {
         "CREATE TABLE IF NOT EXISTS user (
                 id INTEGER PRIMARY KEY,
                 username TEXT,
-                master_encryption_key BLOB
+                master_encryption_key BLOB,
+                salt_recovery_data TEXT,
+                mek_recovery_nonce BLOB,
+                encrypted_mek_recovery BLOB
             )", 
             (), // empty list of parameters.
         ).unwrap();
@@ -119,16 +129,16 @@ impl User {
 
     pub fn insert(&self, conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
         conn.execute(
-            "INSERT INTO user (id, username, master_encryption_key) VALUES (?1, ?2, ?3)", 
-            (&self.id, &self.username, &self.master_encryption_key.to_vec())
+            "INSERT INTO user (id, username, master_encryption_key, salt_recovery_data, mek_recovery_nonce, encrypted_mek_recovery) VALUES (?1, ?2, ?3, ?4, ?5, ?6)", 
+            (&self.id, &self.username, &self.master_encryption_key.to_vec(), &self.salt_recovery_data, &self.mek_recovery_nonce, &self.encrypted_mek_recovery)
         ).unwrap();
 
         Ok(())
     }
 
-    pub fn select(conn: &Connection, id: u32) -> Result<Self, Box<dyn std::error::Error>> {
-        let user = conn.query_one(
-            "SELECT id, username, master_encryption_key FROM user WHERE id = ?", 
+    pub fn select(conn: &Connection, id: u32) -> Result<Option<Self>, Box<dyn std::error::Error>> {
+        let user = match conn.query_one(
+            "SELECT * FROM user WHERE id = ?", 
             (id,),
             |row| {
                 let mek: Vec<u8> = row.get(2)?;
@@ -139,9 +149,16 @@ impl User {
                     id: row.get(0)?,
                     username: row.get(1)?,
                     master_encryption_key: mek,
+                    salt_recovery_data: row.get(3)?,
+                    mek_recovery_nonce: row.get(4)?,
+                    encrypted_mek_recovery: row.get(5)?
                 })
             }
-        ).unwrap();
+        ) {
+            Ok(v) => Some(v),
+            Err(e) if e == QueryReturnedNoRows => None,
+            Err(e) => return Err(e.into())
+        };
 
         Ok(user)
     }
@@ -160,6 +177,9 @@ impl User {
                     id: row.get(0)?,
                     username: row.get(1)?,
                     master_encryption_key: mek,
+                    salt_recovery_data: row.get(3)?,
+                    mek_recovery_nonce: row.get(4)?,
+                    encrypted_mek_recovery: row.get(5)?
                 })
             }
         ).unwrap();

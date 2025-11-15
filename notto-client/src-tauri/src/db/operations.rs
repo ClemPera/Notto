@@ -56,25 +56,29 @@ pub fn update_note(conn: &Connection, note_data: NoteData, mek: Key<Aes256Gcm>) 
     Ok(())
 }
 
-pub fn create_user(conn: &Connection, username: String, password: String) -> Result<User, Box<dyn std::error::Error>> {
-    let encryption_data = crypt::create_user(password);
+pub fn create_user(conn: &Connection, username: String) -> Result<User, Box<dyn std::error::Error>> {
+    let user_encryption_data = crypt::create_user();
 
-    debug!("{encryption_data:?}");
+    debug!("{user_encryption_data:?}");
 
     let user = User {
         id: None,
         username,
-        master_encryption_key: encryption_data.master_encryption_key,
+        master_encryption_key: user_encryption_data.master_encryption_key,
+        salt_recovery_data: user_encryption_data.salt_recovery_data.to_string(),
+        mek_recovery_nonce: user_encryption_data.mek_recovery_nonce,
+        encrypted_mek_recovery: user_encryption_data.encrypted_mek_recovery
     };
 
     user.insert(&conn).unwrap();
 
+    //TODO: send recovery keys to frontend
+    //TODO: store salts and other stuff I need to send to server
+
     Ok(user)
-    
-    //TODO: send that to server
 }
 
-pub fn get_user(conn: &Connection, id: u32) -> Result<User, Box<dyn std::error::Error>> {
+pub fn get_user(conn: &Connection, id: u32) -> Result<Option<User>, Box<dyn std::error::Error>> {
     let user = User::select(conn, id).unwrap();
 
     Ok(user)

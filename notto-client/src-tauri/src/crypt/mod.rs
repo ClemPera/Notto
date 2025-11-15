@@ -22,38 +22,36 @@ pub struct NoteData {
 }
 
 #[derive(Debug)]
-pub struct EncryptionData {
-    pub master_encryption_key: Key<Aes256Gcm>,
-
+pub struct AccountEncryptionData {
     pub recovery_key_auth: String,
-    pub recovery_key_data: String,
-
     pub salt_auth: SaltString,
     pub salt_data: SaltString,
     pub salt_recovery_auth: SaltString,
-    pub salt_recovery_data: SaltString,
     pub salt_server_auth: SaltString,
     pub salt_server_recovery: SaltString,
 
     pub mek_password_nonce: Vec<u8>,
-    pub mek_recovery_nonce: Vec<u8>,
 
     pub encrypted_mek_password: Vec<u8>,
-    pub encrypted_mek_recovery: Vec<u8>,
 
     pub stored_password_hash: String,
     pub stored_recovery_hash: String,
 }
 
-pub fn create_user(password: String) -> EncryptionData {
+#[derive(Debug)]
+pub struct UserEncryptionData {
+    pub master_encryption_key: Key<Aes256Gcm>,
+    pub recovery_key_data: String,
+    pub salt_recovery_data: SaltString,
+    pub mek_recovery_nonce: Vec<u8>,
+    pub encrypted_mek_recovery: Vec<u8>,
+}
+
+pub fn create_user() -> UserEncryptionData {
     //Generate encryption key
-    // let master_encryption_key: &[u8; 32] = &[200, 177, 198, 105, 203, 59, 243, 159, 130, 46, 182, 8, 195, 75, 214, 236, 236, 168, 29, 157, 56, 167, 96, 197, 28, 42, 245, 123, 65, 211, 59, 54];
     let master_encryption_key: Key<Aes256Gcm> = Aes256Gcm::generate_key(OsRng).into();
 
     //Generate recovery keys for auth and data
-    let recovery_key_auth = bip39::Mnemonic::generate_in(Language::English, 24)
-        .unwrap()
-        .to_string();
     let recovery_key_data = bip39::Mnemonic::generate_in(Language::English, 24)
         .unwrap()
         .to_string();
@@ -63,10 +61,45 @@ pub fn create_user(password: String) -> EncryptionData {
     let cipher = Aes256Gcm::new(&master_encryption_key);
 
     //Generate needed salts
+    let salt_recovery_data = SaltString::generate(&mut OsRng);
+
+    let recovery_hash_data = argon2
+        .hash_password(recovery_key_data.as_bytes(), &salt_recovery_data)
+        .unwrap()
+        .to_string();
+
+    //Generate nonce for mek password/recovery
+    let mek_recovery_nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+
+    //Generate hash for mek password and recovery
+    let encrypted_mek_recovery = cipher
+        .encrypt(&mek_recovery_nonce, recovery_hash_data.as_bytes())
+        .unwrap();
+
+    UserEncryptionData {
+        master_encryption_key,
+        recovery_key_data,
+        salt_recovery_data,
+        mek_recovery_nonce:  mek_recovery_nonce.to_vec(),
+        encrypted_mek_recovery,
+    }
+}
+
+
+pub fn create_account(password: String, user: UserEncryptionData) -> AccountEncryptionData {
+    //Generate recovery keys for auth and data
+    let recovery_key_auth = bip39::Mnemonic::generate_in(Language::English, 24)
+        .unwrap()
+        .to_string();
+
+    //Init AesGcm and Argon2
+    let argon2 = Argon2::default();
+    let cipher = Aes256Gcm::new(&user.master_encryption_key);
+
+    //Generate needed salts
     let salt_auth = SaltString::generate(&mut OsRng);
     let salt_data = SaltString::generate(&mut OsRng);
     let salt_recovery_auth = SaltString::generate(&mut OsRng);
-    let salt_recovery_data = SaltString::generate(&mut OsRng);
     let salt_server_auth = SaltString::generate(&mut OsRng);
     let salt_server_recovery = SaltString::generate(&mut OsRng);
 
@@ -83,24 +116,16 @@ pub fn create_user(password: String) -> EncryptionData {
         .hash_password(password.as_bytes(), &salt_data)
         .unwrap()
         .to_string();
-    let recovery_hash_data = argon2
-        .hash_password(recovery_key_data.as_bytes(), &salt_recovery_data)
-        .unwrap()
-        .to_string();
 
     //Generate nonce for mek password/recovery
     let mek_password_nonce = Aes256Gcm::generate_nonce(&mut OsRng);
-    let mek_recovery_nonce = Aes256Gcm::generate_nonce(&mut OsRng);
 
     //Generate hash for mek password and recovery
     let encrypted_mek_password = cipher
         .encrypt(&mek_password_nonce, password_hash_data.as_bytes())
         .unwrap();
-    let encrypted_mek_recovery = cipher
-        .encrypt(&mek_recovery_nonce, recovery_hash_data.as_bytes())
-        .unwrap();
 
-    //Generate hashs for password store on server
+    //Generate hashs for password and recovery stored on server
     let stored_password_hash = argon2
         .hash_password(password_hash_auth.as_bytes(), &salt_server_auth)
         .unwrap()
@@ -110,20 +135,15 @@ pub fn create_user(password: String) -> EncryptionData {
         .unwrap()
         .to_string();
 
-    EncryptionData {
-        master_encryption_key,
+    AccountEncryptionData {
         recovery_key_auth,
-        recovery_key_data,
         salt_auth,
         salt_data,
         salt_recovery_auth,
-        salt_recovery_data,
         salt_server_auth,
         salt_server_recovery,
         mek_password_nonce: mek_password_nonce.to_vec(),
-        mek_recovery_nonce:  mek_recovery_nonce.to_vec(),
         encrypted_mek_password,
-        encrypted_mek_recovery,
         stored_password_hash,
         stored_recovery_hash,
     }
