@@ -1,5 +1,8 @@
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
-use mysql_async::{Conn, FromRowError, Row, params, prelude::{FromRow, Queryable, WithParams}};
+use mysql_async::{
+    Conn, FromRowError, Row, params,
+    prelude::{FromRow, Queryable, WithParams},
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -25,37 +28,62 @@ impl FromRow for Note {
     }
 }
 
+impl From<shared::Note> for Note {
+    fn from(note: shared::Note) -> Self {
+        Note {
+            id: note.id,
+            id_user: note.id_user,
+            title: note.title,
+            content: note.content,
+            nonce: note.nonce,
+            created_at: note.created_at
+        }
+    }
+}
+
 impl Note {
     //TODO: pub async fn create(&self, conn: &mut Conn) {}
 
     pub async fn insert(&self, conn: &mut Conn) {
-        conn.exec_drop("INSERT INTO note (id_user, title, content, nonce, created_at) 
-            VALUES (:id_user, :title, :content, :nonce, :created_at)", 
+        conn.exec_drop(
+            "INSERT INTO note (id_user, title, content, nonce, created_at) 
+            VALUES (:id_user, :title, :content, :nonce, :created_at)",
             params!(
                 "id_user" => &self.id_user,
                 "title" => &self.title,
                 "content" => &self.content,
                 "nonce" => &self.nonce,
                 "created_at" => &self.created_at
-            )).await.unwrap();
+            ),
+        )
+        .await
+        .unwrap();
     }
 
     pub async fn update(&self, conn: &mut Conn) {
-        conn.exec_drop("UPDATE note 
+        conn.exec_drop(
+            "UPDATE note 
             SET (title = :title, content = :content, nonce = :nonce) 
-            WHERE id = :id", 
+            WHERE id = :id",
             params!(
                 "title" => &self.title,
                 "content" => &self.content,
                 "nonce" => &self.nonce
-            )).await.unwrap();
+            ),
+        )
+        .await
+        .unwrap();
     }
 
     pub async fn select_all_from_user(conn: &mut Conn, id_user: u32) -> Vec<Self> {
-        conn.exec("SELECT * FROM note WHERE id_user = :id_user",
+        conn.exec(
+            "SELECT * FROM note WHERE id_user = :id_user",
             params!(
                 "id_user" => id_user
-            )).await.unwrap()
+            ),
+        )
+        .await
+        .unwrap()
     }
 }
 
@@ -98,6 +126,26 @@ impl FromRow for User {
     }
 }
 
+impl From<shared::User> for User {
+    fn from(user: shared::User) -> Self {
+        User {
+            id: user.id,
+            username: user.username,
+            stored_password_hash: user.stored_password_hash,
+            stored_recovery_hash: user.stored_recovery_hash,
+            encrypted_mek_password: user.encrypted_mek_password,
+            mek_password_nonce: user.mek_password_nonce,
+            encrypted_mek_recovery: user.encrypted_mek_recovery,
+            mek_recovery_nonce: user.mek_recovery_nonce,
+            salt_auth: user.salt_auth,
+            salt_data: user.salt_data,
+            salt_recovery_auth: user.salt_recovery_auth,
+            salt_recovery_data: user.salt_recovery_data,
+            salt_server_auth: user.salt_server_auth,
+            salt_server_recovery: user.salt_server_recovery,
+        }
+    }
+}
 
 impl User {
     //TODO: pub async fn create(&self, conn: &mut Conn) {}
@@ -125,10 +173,15 @@ impl User {
     }
 
     pub async fn select(conn: &mut Conn, id: u32) -> Self {
-        conn.exec_first("SELECT * FROM user WHERE id_user = :id_user",
+        conn.exec_first(
+            "SELECT * FROM user WHERE id_user = :id_user",
             params!(
                 "id" => id
-            )).await.unwrap().unwrap()
+            ),
+        )
+        .await
+        .unwrap()
+        .unwrap()
     }
 }
 
@@ -136,7 +189,7 @@ impl User {
 pub struct UserToken {
     pub id: Option<u32>,
     pub id_user: u32,
-    pub token: Vec<u8>
+    pub token: Vec<u8>,
 }
 
 impl FromRow for UserToken {
@@ -153,18 +206,27 @@ impl UserToken {
     //TODO: pub async fn create(&self, conn: &mut Conn) {}
 
     pub async fn insert(&self, conn: &mut Conn) {
-        conn.exec_drop("INSERT INTO user_token (id_user, token) 
-            VALUES (:id_user, :token)", 
+        conn.exec_drop(
+            "INSERT INTO user_token (id_user, token) 
+            VALUES (:id_user, :token)",
             params!(
                 "id_user" => &self.id_user,
                 "token" => &self.token,
-            )).await.unwrap();
+            ),
+        )
+        .await
+        .unwrap();
     }
 
     pub async fn select(conn: &mut Conn, id: u32) -> Self {
-        conn.exec_first("SELECT * FROM user_token WHERE id_user = :id_user",
+        conn.exec_first(
+            "SELECT * FROM user_token WHERE id_user = :id_user",
             params!(
                 "id" => id
-            )).await.unwrap().unwrap()
+            ),
+        )
+        .await
+        .unwrap()
+        .unwrap()
     }
 }

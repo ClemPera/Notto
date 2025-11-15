@@ -1,3 +1,4 @@
+use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -16,4 +17,50 @@ pub struct User {
     pub salt_recovery_data: String,
     pub salt_server_auth: String,
     pub salt_server_recovery: String,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct Note {
+    pub id: Option<u32>,
+    pub id_user: u32,
+    pub title: String,
+    pub content: Vec<u8>,
+    pub nonce: Vec<u8>,
+    pub created_at: NaiveDateTime,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct SelectNoteParams {
+    pub id_user: u32,
+    pub token: Vec<u8>
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct SentNote {
+    pub note: Note,
+    pub token: Vec<u8>
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct UserRequestParams {
+    pub id_user: u32,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct LoginRequest {
+    pub salt_auth: String,
+    pub salt_server_auth: String,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct LoginParams {
+    pub id_user: u32,
+    pub login_hash: String,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct Login {
+    pub salt_data: String,
+    pub encrypted_mek_password: Vec<u8>,
+    pub token: Vec<u8>,
 }
