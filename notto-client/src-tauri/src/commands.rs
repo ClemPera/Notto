@@ -5,9 +5,9 @@ use serde::Serialize;
 use tauri::State;
 use tauri_plugin_log::log::debug;
 
-use crate::AppState;
+use crate::{AppState, sync};
 use crate::crypt::NoteData;
-use crate::db::operations::{self};
+use crate::db;
 use crate::db::schema::{Note, User};
 
 ///Convert any error to string for frontend
@@ -62,7 +62,7 @@ pub fn init(state: State<'_, Mutex<AppState>>) {
 
     let conn = state.database.lock().unwrap();
 
-    operations::init(&conn);
+    db::operations::init(&conn);
 }
 
 #[tauri::command]
@@ -71,7 +71,7 @@ pub fn create_note(state: State<'_, Mutex<AppState>>, title: String) -> Result<(
 
     let conn = state.database.lock().unwrap();
     
-    operations::create_note(&conn, state.id_user.unwrap(), title, state.master_encryption_key.unwrap()).unwrap();
+    db::operations::create_note(&conn, state.id_user.unwrap(), title, state.master_encryption_key.unwrap()).unwrap();
 
     Ok(())
 }
@@ -82,7 +82,7 @@ pub fn get_note(state: State<'_, Mutex<AppState>>, id: u32) -> Result<NoteData, 
 
     let conn = state.database.lock().unwrap();
     
-    let note = operations::get_note(&conn, id, state.master_encryption_key.unwrap()).unwrap();
+    let note = db::operations::get_note(&conn, id, state.master_encryption_key.unwrap()).unwrap();
 
     Ok(note)
 }
@@ -94,7 +94,7 @@ pub fn edit_note(state: State<'_, Mutex<AppState>>, note: NoteData) -> Result<()
     let conn = state.database.lock().unwrap();
     
 
-    operations::update_note(&conn, note, state.master_encryption_key.unwrap()).unwrap();
+    db::operations::update_note(&conn, note, state.master_encryption_key.unwrap()).unwrap();
 
     Ok(())
 }
@@ -105,7 +105,7 @@ pub fn get_all_notes_metadata(state: State<'_, Mutex<AppState>>, id_user: u32) -
 
     let conn = state.database.lock().unwrap();
 
-    let notes = operations::get_notes(&conn, id_user).unwrap();
+    let notes = db::operations::get_notes(&conn, id_user).unwrap();
 
     let notes_metadata = notes.into_iter().map(NoteMetadata::from).collect();
     
@@ -113,12 +113,12 @@ pub fn get_all_notes_metadata(state: State<'_, Mutex<AppState>>, id_user: u32) -
 }
 
 #[tauri::command]
-pub fn create_user(state: State<'_, Mutex<AppState>>, username: String, password: String) -> Result<(), CommandError> {
+pub fn create_user(state: State<'_, Mutex<AppState>>, username: String) -> Result<(), CommandError> {
     let mut state = state.lock().unwrap();
 
     let user = {
         let conn = state.database.lock().unwrap();
-        operations::create_user(&conn, username, password).unwrap()
+        db::operations::create_user(&conn, username).unwrap()
     };
 
     state.master_encryption_key = Some(user.master_encryption_key);
@@ -135,7 +135,7 @@ pub fn get_users(state: State<'_, Mutex<AppState>>) -> Result<Vec<FilteredUser>,
 
     let conn = state.database.lock().unwrap();
     
-    let users = operations::get_users(&conn).unwrap();
+    let users = db::operations::get_users(&conn).unwrap();
 
     let filtered_users= users.into_iter().map(FilteredUser::from).collect();
 
@@ -157,12 +157,27 @@ pub fn set_user(state: State<'_, Mutex<AppState>>, id: u32) -> Result<(), Comman
     
     let user = {
         let conn = state.database.lock().unwrap();
-        operations::get_user(&conn, id).unwrap()
+        match db::operations::get_user(&conn, id).unwrap() {
+            Some(u) => u,
+            None => return Err(CommandError { message: "User doesn't exist".to_string() })
+        }
     };
 
     state.id_user = Some(id);
 
     state.master_encryption_key = Some(user.master_encryption_key);
 
+    Ok(())
+}
+
+#[tauri::command]
+pub fn sync_create_account(state: State<'_, Mutex<AppState>>, id: u32, instance: Option<String>) -> Result<(), CommandError> {
+    let mut state = state.lock().unwrap();
+    
+    let conn = state.database.lock().unwrap();
+    let user = db::operations::get_user(&conn, id).unwrap().unwrap();
+
+    sync::create_account(&conn, user, instance);
+    
     Ok(())
 }

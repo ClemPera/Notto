@@ -1,23 +1,25 @@
-fn insert_note(){
+use shared::User;
+
+pub fn insert_note(){
 
 }
 
-fn update_note(){
+pub fn update_note(){
 
 }
 
-fn select_notes(){
+pub fn select_notes(){
 
 }
 
-fn create_account(){
+pub fn create_account(user: User, instance: String){
+    // reqwest::get()
+}
+
+pub fn login_request(){
 
 }
 
-fn login_request(){
-
-}
-
-fn login(){
+pub fn login(){
 
 }

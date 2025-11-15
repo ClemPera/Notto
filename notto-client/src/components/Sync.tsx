@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useGeneral } from "../store/general";
+import { invoke } from "@tauri-apps/api/core";
 
 enum SyncStatus {
   Ok,
@@ -7,11 +9,13 @@ enum SyncStatus {
 }
 
 export default function Sync() {
+  const { userId, setUserId } = useGeneral();
   const [logged, setLogged] = useState<boolean>(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(SyncStatus.Syncing);
 
   async function create_account() {
-    //TODO
+    await invoke("sync_create_account", {id_user: userId}) //.then((notes) => setNotes(notes as Note[]))
+      .catch((e) => console.error(e));
   }
 
   async function login() {

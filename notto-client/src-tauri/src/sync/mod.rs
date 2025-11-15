@@ -1,5 +1,14 @@
-use crate::db::operations;
+use rusqlite::Connection;
+use crate::schema::User;
 
-fn create_account(){
-    // operations::create_account();
+mod operations;
+
+pub fn create_account(conn: &Connection, user: User, instance: Option<String>){
+    let instance = match instance {
+        Some(i) => i,
+        None => "localhost:3000".to_string()
+    };
+
+    //TODO
+    // operations::create_account(user.into(), instance);
 }
