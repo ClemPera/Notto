@@ -21,7 +21,6 @@ function App() {
     invoke("set_user", { id: user_id_to_change })
       .then(() => setUserId(user_id_to_change))
       .catch((e) => console.error(e));
-    
   }, [userId])
 
   return (

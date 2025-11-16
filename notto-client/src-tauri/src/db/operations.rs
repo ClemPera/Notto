@@ -73,7 +73,6 @@ pub fn create_user(conn: &Connection, username: String) -> Result<User, Box<dyn 
     user.insert(&conn).unwrap();
 
     //TODO: send recovery keys to frontend
-    //TODO: store salts and other stuff I need to send to server
 
     Ok(user)
 }

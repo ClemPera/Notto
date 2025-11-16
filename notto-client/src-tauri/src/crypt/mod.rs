@@ -86,7 +86,7 @@ pub fn create_user() -> UserEncryptionData {
 }
 
 
-pub fn create_account(password: String, user: UserEncryptionData) -> AccountEncryptionData {
+pub fn create_account(password: String, mek: Key<Aes256Gcm>) -> AccountEncryptionData {
     //Generate recovery keys for auth and data
     let recovery_key_auth = bip39::Mnemonic::generate_in(Language::English, 24)
         .unwrap()
@@ -94,7 +94,7 @@ pub fn create_account(password: String, user: UserEncryptionData) -> AccountEncr
 
     //Init AesGcm and Argon2
     let argon2 = Argon2::default();
-    let cipher = Aes256Gcm::new(&user.master_encryption_key);
+    let cipher = Aes256Gcm::new(&mek);
 
     //Generate needed salts
     let salt_auth = SaltString::generate(&mut OsRng);

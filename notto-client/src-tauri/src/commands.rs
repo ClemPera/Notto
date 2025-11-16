@@ -3,9 +3,9 @@ use std::sync::Mutex;
 use chrono::NaiveDateTime;
 use serde::Serialize;
 use tauri::State;
-use tauri_plugin_log::log::debug;
+use tauri_plugin_log::log::{debug, trace};
 
-use crate::{AppState, sync};
+use crate::{AppState, crypt, sync};
 use crate::crypt::NoteData;
 use crate::db;
 use crate::db::schema::{Note, User};
@@ -171,13 +171,21 @@ pub fn set_user(state: State<'_, Mutex<AppState>>, id: u32) -> Result<(), Comman
 }
 
 #[tauri::command]
-pub fn sync_create_account(state: State<'_, Mutex<AppState>>, id: u32, instance: Option<String>) -> Result<(), CommandError> {
+pub fn sync_create_account(state: State<'_, Mutex<AppState>>, id: u32, password: String, instance: Option<String>) -> Result<(), CommandError> {
+    trace!("create account command received");
+    
     let mut state = state.lock().unwrap();
     
     let conn = state.database.lock().unwrap();
     let user = db::operations::get_user(&conn, id).unwrap().unwrap();
+    let account = crypt::create_account(password, state.master_encryption_key.unwrap());
+    
+    trace!("create account: start creating");
+    sync::create_account(&conn, user, account, instance);
+    
+    trace!("account has been created");
 
-    sync::create_account(&conn, user, instance);
+    //TODO: send back recovery key to frontend
     
     Ok(())
 }

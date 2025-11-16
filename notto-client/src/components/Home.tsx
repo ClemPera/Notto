@@ -52,7 +52,7 @@ export default function Home() {
     await invoke("edit_note", { note }).catch((e) => console.error(e));
   }
 
-    async function edit_note_title(title: string) {
+  async function edit_note_title(title: string) {
     const note: NoteContent = {
       id: currentNote?.id!,
       title: title!,

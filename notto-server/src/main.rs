@@ -81,11 +81,13 @@ async fn select_notes(
 }
 
 async fn insert_user(State(pool): State<Pool>, Json(user): Json<shared::User>) {
+    println!("received insert_user");
     let user: schema::User = user.into();
-
+    
     let mut conn = pool.get_conn().await.unwrap();
-
+    
     user.insert(&mut conn).await;
+    println!("insert_user: completed");
 }
 
 async fn login_request(

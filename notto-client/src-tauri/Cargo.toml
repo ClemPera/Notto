@@ -29,4 +29,4 @@ argon2 = { version = "0.5.3", features = ["std"] }
 aes-gcm = "0.10.3"
 chrono = { version="0.4.42", features = ["serde"] }
 bip39 = { version="2.2.0", features = ["rand"] }
-reqwest = "0.12.24"
+reqwest = { version = "0.12.24", features = ["json", "blocking"] }
