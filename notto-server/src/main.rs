@@ -92,7 +92,7 @@ async fn insert_user(State(pool): State<Pool>, Json(user): Json<shared::User>) {
 
 async fn login_request(
     State(pool): State<Pool>,
-    Query(params): Query<shared::UserRequestParams>,
+    Query(params): Query<shared::LoginRequestParams>,
 ) -> Json<shared::LoginRequest> {
     let mut conn = pool.get_conn().await.unwrap();
 

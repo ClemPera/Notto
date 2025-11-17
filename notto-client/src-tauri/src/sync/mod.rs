@@ -6,7 +6,7 @@ mod operations;
 pub fn create_account(conn: &Connection, user: User, account: crypt::AccountEncryptionData, instance: Option<String>){
     let instance = match instance {
         Some(i) => i,
-        None => "localhost:3000".to_string()
+        None => "http://localhost:3000".to_string()
     };
 
     let send_user = shared::User {
@@ -27,4 +27,29 @@ pub fn create_account(conn: &Connection, user: User, account: crypt::AccountEncr
     };
 
     operations::create_account(send_user, instance);
+}
+
+pub fn login(conn: &Connection, id_user: u32, password: String, instance: Option<String>) -> shared::Login{
+    let instance = match instance {
+        Some(i) => i,
+        None => "http://localhost:3000".to_string()
+    };
+
+    //Request login
+    let request_params = shared::LoginRequestParams {
+        id_user
+    };
+    
+    let login_request = operations::login_request(request_params, instance.clone());
+
+    //Hash
+    let login_hash = crypt::login(login_request, password);
+
+    //Login
+    let login_params = shared::LoginParams {
+        id_user,
+        login_hash
+    };
+
+    operations::login(login_params, instance)
 }

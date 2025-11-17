@@ -42,7 +42,7 @@ pub struct SentNote {
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-pub struct UserRequestParams {
+pub struct LoginRequestParams {
     pub id_user: u32,
 }
 

@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use chrono::NaiveDateTime;
 use serde::Serialize;
 use tauri::State;
-use tauri_plugin_log::log::{debug, trace};
+use tauri_plugin_log::log::{self, debug, trace};
 
 use crate::{AppState, crypt, sync};
 use crate::crypt::NoteData;
@@ -14,6 +14,14 @@ use crate::db::schema::{Note, User};
 #[derive(Debug, Serialize)]
 pub struct CommandError {
     message: String,
+}
+
+impl From<Box<dyn std::error::Error>> for CommandError {
+    fn from(err: Box<dyn std::error::Error>) -> Self {
+        CommandError {
+            message: err.to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -44,14 +52,6 @@ impl From<Note> for NoteMetadata {
             id: note.id.unwrap(),
             title: note.title,
             created_at: note.created_at.unwrap()
-        }
-    }
-}
-
-impl From<Box<dyn std::error::Error>> for CommandError {
-    fn from(err: Box<dyn std::error::Error>) -> Self {
-        CommandError {
-            message: err.to_string(),
         }
     }
 }
@@ -170,22 +170,41 @@ pub fn set_user(state: State<'_, Mutex<AppState>>, id: u32) -> Result<(), Comman
     Ok(())
 }
 
-#[tauri::command]
-pub fn sync_create_account(state: State<'_, Mutex<AppState>>, id: u32, password: String, instance: Option<String>) -> Result<(), CommandError> {
+#[tauri::command(rename_all = "snake_case")]
+pub fn sync_create_account(state: State<'_, Mutex<AppState>>, id_user: u32, password: String, instance: Option<String>) -> Result<(), CommandError> {
     trace!("create account command received");
     
     let mut state = state.lock().unwrap();
     
     let conn = state.database.lock().unwrap();
-    let user = db::operations::get_user(&conn, id).unwrap().unwrap();
+    let user = db::operations::get_user(&conn, id_user).unwrap().unwrap();
     let account = crypt::create_account(password, state.master_encryption_key.unwrap());
     
     trace!("create account: start creating");
     sync::create_account(&conn, user, account, instance);
     
-    trace!("account has been created");
+    debug!("account has been created");
 
     //TODO: send back recovery key to frontend
     
+    Ok(())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn sync_login(state: State<'_, Mutex<AppState>>, id_user: u32, password: String, instance: Option<String>) -> Result<(), CommandError> {
+    trace!("create account command received");
+
+    let mut state = state.lock().unwrap();
+    let conn = state.database.lock().unwrap();
+    
+    let login_data = sync::login(&conn, id_user, password.clone(), instance);
+    debug!("account has been logged in");
+
+    crypt::decrypt_mek(password, login_data.encrypted_mek_password, login_data.salt_data);
+
+    //TODO: store mek inside state and inside db per user
+
+    //TODO: store token inside db per user
+
     Ok(())
 }

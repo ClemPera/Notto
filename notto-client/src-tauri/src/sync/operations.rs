@@ -1,4 +1,4 @@
-use shared::User;
+use shared::{LoginRequestParams, User};
 use tauri_plugin_log::log::debug;
 
 pub fn insert_note(){
@@ -20,10 +20,14 @@ pub fn create_account(user: User, instance: String){
     debug!("create account response: {response:?}");
 }
 
-pub fn login_request(){
+pub fn login_request(params: LoginRequestParams, instance: String) -> shared::LoginRequest{
+    let client = reqwest::blocking::Client::new();
 
+    client.get(instance + "/login").query(&params).send().unwrap().json().unwrap()
 }
 
-pub fn login(){
+pub fn login(params: shared::LoginParams, instance: String) -> shared::Login{
+    let client = reqwest::blocking::Client::new();
 
+    client.post(instance + "/login").json(&params).send().unwrap().json().unwrap()
 }

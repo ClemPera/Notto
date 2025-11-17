@@ -1,15 +1,14 @@
 use aes_gcm::{AeadCore, Aes256Gcm, Key, KeyInit, Nonce, aead::Aead, aes::Aes256};
 use argon2::{
-    password_hash::{
-        rand_core::{OsRng, RngCore},
-        PasswordHash, PasswordHasher, PasswordVerifier, SaltString,
-    },
-    Argon2,
+    Argon2, password_hash::{
+        self, PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::{OsRng, RngCore}
+    }
 };
 use bip39::Language;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
-use tauri_plugin_log::log::{debug, info};
+use shared::LoginRequest;
+use tauri_plugin_log::log::{trace, debug, info};
 
 use crate::db::schema;
 
@@ -58,7 +57,6 @@ pub fn create_user() -> UserEncryptionData {
 
     //Init AesGcm and Argon2
     let argon2 = Argon2::default();
-    let cipher = Aes256Gcm::new(&master_encryption_key);
 
     //Generate needed salts
     let salt_recovery_data = SaltString::generate(&mut OsRng);
@@ -98,7 +96,6 @@ pub fn create_account(password: String, mek: Key<Aes256Gcm>) -> AccountEncryptio
 
     //Init AesGcm and Argon2
     let argon2 = Argon2::default();
-    let cipher = Aes256Gcm::new(&mek);
 
     //Generate needed salts
     let salt_auth = SaltString::generate(&mut OsRng);
@@ -155,6 +152,35 @@ pub fn create_account(password: String, mek: Key<Aes256Gcm>) -> AccountEncryptio
         stored_password_hash,
         stored_recovery_hash,
     }
+}
+
+pub fn login(login_request: LoginRequest, password: String) -> String {
+    let argon2 = Argon2::default();
+
+    let salt_auth = SaltString::from_b64(&login_request.salt_auth).unwrap();
+    let salt_server_auth = SaltString::from_b64(&login_request.salt_server_auth).unwrap();
+
+    let password_hash_auth = argon2.hash_password(password.as_bytes(), &salt_auth)
+        .unwrap()
+        .to_string();
+
+    argon2.hash_password(password_hash_auth.as_bytes(), &salt_server_auth)
+        .unwrap()
+        .to_string()
+}
+
+pub fn decrypt_mek(password: String, encrypted_mek_password: Vec<u8>, salt_data: String){
+    let argon2 = Argon2::default();
+
+    let salt_data = SaltString::from_b64(&salt_data).unwrap();
+
+    //TODO
+    let password_hash_data = argon2
+        .hash_password(password.as_bytes(), &salt_data)
+        .unwrap()
+        .to_string();
+
+
 }
 
 pub fn encrypt_note(
