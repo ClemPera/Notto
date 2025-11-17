@@ -65,16 +65,20 @@ pub fn create_user() -> UserEncryptionData {
 
     let recovery_hash_data = argon2
         .hash_password(recovery_key_data.as_bytes(), &salt_recovery_data)
-        .unwrap()
-        .to_string();
+        .unwrap();
 
+    let recovery_key_hash = recovery_hash_data.hash.unwrap();
+
+    let recovery_key = Key::<Aes256Gcm>::from_slice(recovery_key_hash.as_bytes());
+    let cipher = Aes256Gcm::new(recovery_key);
+    
     //Generate nonce for mek password/recovery
     let mek_recovery_nonce = Aes256Gcm::generate_nonce(&mut OsRng);
-
+    
     //Generate hash for mek password and recovery
     let encrypted_mek_recovery = cipher
-        .encrypt(&mek_recovery_nonce, recovery_hash_data.as_bytes())
-        .unwrap();
+    .encrypt(&mek_recovery_nonce, master_encryption_key.as_slice())
+    .unwrap();
 
     UserEncryptionData {
         master_encryption_key,
@@ -114,15 +118,19 @@ pub fn create_account(password: String, mek: Key<Aes256Gcm>) -> AccountEncryptio
         .to_string();
     let password_hash_data = argon2
         .hash_password(password.as_bytes(), &salt_data)
-        .unwrap()
-        .to_string();
+        .unwrap();
+
+    let password_key_hash = password_hash_data.hash.unwrap();
+
+    let password_key = Key::<Aes256Gcm>::from_slice(password_key_hash.as_bytes());
+    let cipher = Aes256Gcm::new(password_key);
 
     //Generate nonce for mek password/recovery
     let mek_password_nonce = Aes256Gcm::generate_nonce(&mut OsRng);
 
     //Generate hash for mek password and recovery
     let encrypted_mek_password = cipher
-        .encrypt(&mek_password_nonce, password_hash_data.as_bytes())
+        .encrypt(&mek_password_nonce, mek.as_slice())
         .unwrap();
 
     //Generate hashs for password and recovery stored on server
