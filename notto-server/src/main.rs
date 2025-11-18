@@ -96,8 +96,8 @@ async fn login_request(
 ) -> Json<shared::LoginRequest> {
     let mut conn = pool.get_conn().await.unwrap();
 
-    let user = schema::User::select(&mut conn, params.id_user).await;
-
+    let user = schema::User::select(&mut conn, params.username).await;
+    
     Json(shared::LoginRequest {
         salt_auth: user.salt_auth,
         salt_server_auth: user.salt_server_auth,
@@ -112,7 +112,7 @@ async fn login(
     let mut conn = pool.get_conn().await.unwrap();
 
     //Check if login_hash is correct
-    let user = schema::User::select(&mut conn, params.id_user).await;
+    let user = schema::User::select(&mut conn, params.username).await;
 
     if params.login_hash != user.stored_password_hash {
         return Err(StatusCode::UNAUTHORIZED);
@@ -122,11 +122,10 @@ async fn login(
     let mut token = vec![0u8; 32];
     OsRng.try_fill_bytes(&mut token).unwrap();
 
-
     //Store token
     let user_token = schema::UserToken {
         id: None,
-        id_user: params.id_user,
+        id_user: user.id.unwrap(),
         token,
     };
 
@@ -136,6 +135,7 @@ async fn login(
     Ok(Json(shared::Login {
         salt_data: user.salt_data,
         encrypted_mek_password: user.encrypted_mek_password,
+        mek_password_nonce: user.mek_password_nonce,
         token: user_token.token,
     }))
 }

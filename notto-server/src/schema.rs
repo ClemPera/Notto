@@ -172,11 +172,11 @@ impl User {
             )).await.unwrap();
     }
 
-    pub async fn select(conn: &mut Conn, id: u32) -> Self {
+    pub async fn select(conn: &mut Conn, username: String) -> Self {
         conn.exec_first(
-            "SELECT * FROM user WHERE id_user = :id_user",
+            "SELECT * FROM user WHERE username = :username",
             params!(
-                "id" => id
+                "username" => username
             ),
         )
         .await
@@ -222,7 +222,7 @@ impl UserToken {
         conn.exec_first(
             "SELECT * FROM user_token WHERE id_user = :id_user",
             params!(
-                "id" => id
+                "id_user" => id
             ),
         )
         .await

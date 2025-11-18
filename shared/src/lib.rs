@@ -43,7 +43,7 @@ pub struct SentNote {
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct LoginRequestParams {
-    pub id_user: u32,
+    pub username: String,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -54,7 +54,7 @@ pub struct LoginRequest {
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct LoginParams {
-    pub id_user: u32,
+    pub username: String,
     pub login_hash: String,
 }
 
@@ -62,5 +62,6 @@ pub struct LoginParams {
 pub struct Login {
     pub salt_data: String,
     pub encrypted_mek_password: Vec<u8>,
+    pub mek_password_nonce: Vec<u8>,
     pub token: Vec<u8>,
 }
