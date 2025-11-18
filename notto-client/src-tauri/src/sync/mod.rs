@@ -1,5 +1,6 @@
 use rusqlite::Connection;
 use crate::{crypt, schema::User};
+use tauri_plugin_log::log::{trace, debug};
 
 mod operations;
 
@@ -29,7 +30,7 @@ pub fn create_account(conn: &Connection, user: User, account: crypt::AccountEncr
     operations::create_account(send_user, instance);
 }
 
-pub fn login(conn: &Connection, id_user: u32, password: String, instance: Option<String>) -> shared::Login{
+pub fn login(conn: &Connection, username: String, password: String, instance: Option<String>) -> shared::Login{
     let instance = match instance {
         Some(i) => i,
         None => "http://localhost:3000".to_string()
@@ -37,7 +38,7 @@ pub fn login(conn: &Connection, id_user: u32, password: String, instance: Option
 
     //Request login
     let request_params = shared::LoginRequestParams {
-        id_user
+        username: username.clone()
     };
     
     let login_request = operations::login_request(request_params, instance.clone());
@@ -45,11 +46,13 @@ pub fn login(conn: &Connection, id_user: u32, password: String, instance: Option
     //Hash
     let login_hash = crypt::login(login_request, password);
 
+    debug!("login hash: {login_hash:?}");
+
     //Login
     let login_params = shared::LoginParams {
-        id_user,
+        username,
         login_hash
     };
 
-    operations::login(login_params, instance)
+    operations::login(login_params, instance).unwrap()
 }

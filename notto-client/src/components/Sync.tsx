@@ -15,12 +15,13 @@ export default function Sync() {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(SyncStatus.Syncing);
 
   async function create_account() {
-    await invoke("sync_create_account", { id_user: userId, password: "password" })
+    await invoke("sync_create_account", { username: "test_account", password: "password" })
       .catch((e) => console.error(e));
   }
 
   async function login() {
-    //TODO
+    await invoke("sync_login", { username: "test_account", password: "password" })
+      .catch((e) => console.error(e));
   }
   
   async function sync() {

@@ -49,6 +49,7 @@ pub fn run() {
             commands::get_users,
             commands::set_user,
             commands::sync_create_account,
+            commands::sync_login,
             commands::test,
             ])
         .run(tauri::generate_context!())

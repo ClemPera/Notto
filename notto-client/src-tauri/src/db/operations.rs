@@ -67,7 +67,8 @@ pub fn create_user(conn: &Connection, username: String) -> Result<User, Box<dyn 
         master_encryption_key: user_encryption_data.master_encryption_key,
         salt_recovery_data: user_encryption_data.salt_recovery_data.to_string(),
         mek_recovery_nonce: user_encryption_data.mek_recovery_nonce,
-        encrypted_mek_recovery: user_encryption_data.encrypted_mek_recovery
+        encrypted_mek_recovery: user_encryption_data.encrypted_mek_recovery,
+        token: None
     };
 
     user.insert(&conn).unwrap();
@@ -77,8 +78,12 @@ pub fn create_user(conn: &Connection, username: String) -> Result<User, Box<dyn 
     Ok(user)
 }
 
-pub fn get_user(conn: &Connection, id: u32) -> Result<Option<User>, Box<dyn std::error::Error>> {
-    let user = User::select(conn, id).unwrap();
+pub fn update_user(conn: &Connection, new_user: User) {
+    new_user.update(conn).unwrap();
+}
+
+pub fn get_user(conn: &Connection, username: String) -> Result<Option<User>, Box<dyn std::error::Error>> {
+    let user = User::select(conn, username).unwrap();
 
     Ok(user)
 }

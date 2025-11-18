@@ -107,7 +107,8 @@ pub struct User {
     //This will be send to the server
     pub salt_recovery_data: String,
     pub mek_recovery_nonce: Vec<u8>,
-    pub encrypted_mek_recovery: Vec<u8>
+    pub encrypted_mek_recovery: Vec<u8>,
+    pub token: Option<Vec<u8>>
 }
 
 impl User {
@@ -119,7 +120,8 @@ impl User {
                 master_encryption_key BLOB,
                 salt_recovery_data TEXT,
                 mek_recovery_nonce BLOB,
-                encrypted_mek_recovery BLOB
+                encrypted_mek_recovery BLOB,
+                token TEXT
             )", 
             (), // empty list of parameters.
         ).unwrap();
@@ -129,17 +131,17 @@ impl User {
 
     pub fn insert(&self, conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
         conn.execute(
-            "INSERT INTO user (id, username, master_encryption_key, salt_recovery_data, mek_recovery_nonce, encrypted_mek_recovery) VALUES (?1, ?2, ?3, ?4, ?5, ?6)", 
-            (&self.id, &self.username, &self.master_encryption_key.to_vec(), &self.salt_recovery_data, &self.mek_recovery_nonce, &self.encrypted_mek_recovery)
+            "INSERT INTO user (id, username, master_encryption_key, salt_recovery_data, mek_recovery_nonce, encrypted_mek_recovery, token) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)", 
+            (&self.id, &self.username, &self.master_encryption_key.to_vec(), &self.salt_recovery_data, &self.mek_recovery_nonce, &self.encrypted_mek_recovery, &self.token)
         ).unwrap();
 
         Ok(())
     }
 
-    pub fn select(conn: &Connection, id: u32) -> Result<Option<Self>, Box<dyn std::error::Error>> {
+    pub fn select(conn: &Connection, username: String) -> Result<Option<Self>, Box<dyn std::error::Error>> {
         let user = match conn.query_one(
-            "SELECT * FROM user WHERE id = ?", 
-            (id,),
+            "SELECT * FROM user WHERE username = ?", 
+            (username,),
             |row| {
                 let mek: Vec<u8> = row.get(2)?;
                 let mek: [u8; 32] = mek.try_into().unwrap();
@@ -151,7 +153,8 @@ impl User {
                     master_encryption_key: mek,
                     salt_recovery_data: row.get(3)?,
                     mek_recovery_nonce: row.get(4)?,
-                    encrypted_mek_recovery: row.get(5)?
+                    encrypted_mek_recovery: row.get(5)?,
+                    token: row.get(6)?
                 })
             }
         ) {
@@ -179,7 +182,8 @@ impl User {
                     master_encryption_key: mek,
                     salt_recovery_data: row.get(3)?,
                     mek_recovery_nonce: row.get(4)?,
-                    encrypted_mek_recovery: row.get(5)?
+                    encrypted_mek_recovery: row.get(5)?,
+                    token: row.get(6)?
                 })
             }
         ).unwrap();
@@ -194,6 +198,9 @@ impl User {
     }
     
     pub fn update(&self, conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
-        Err(Box::from("Not implemented yet"))
+        conn.execute("UPDATE user SET username = ?, master_encryption_key = ?, salt_recovery_data = ?, mek_recovery_nonce = ?, encrypted_mek_recovery = ?, token = ? WHERE id = ?",
+        (&self.username, &self.master_encryption_key.to_vec(), &self.salt_recovery_data, &self.mek_recovery_nonce, &self.encrypted_mek_recovery, &self.token, &self.id))?;
+        
+        Ok(())
     }
 }

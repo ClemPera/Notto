@@ -1,4 +1,4 @@
-use aes_gcm::{AeadCore, Aes256Gcm, Key, KeyInit, Nonce, aead::Aead, aes::Aes256};
+use aes_gcm::{AeadCore, Aes256Gcm, Key, KeyInit, Nonce, aead::{Aead, Payload}, aes::Aes256};
 use argon2::{
     Argon2, password_hash::{
         self, PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::{OsRng, RngCore}
@@ -7,6 +7,7 @@ use argon2::{
 use bip39::Language;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::from_slice;
 use shared::LoginRequest;
 use tauri_plugin_log::log::{trace, debug, info};
 
@@ -140,6 +141,11 @@ pub fn create_account(password: String, mek: Key<Aes256Gcm>) -> AccountEncryptio
         .unwrap()
         .to_string();
 
+
+    trace!("salt_auth: {salt_auth:?}");
+    trace!("password_hash_auth: {password_hash_auth:?}");
+    trace!("salt_server_auth: {salt_server_auth:?}");
+
     AccountEncryptionData {
         recovery_key_auth,
         salt_auth,
@@ -164,23 +170,34 @@ pub fn login(login_request: LoginRequest, password: String) -> String {
         .unwrap()
         .to_string();
 
+    trace!("salt_auth: {salt_auth:?}");
+    trace!("password_hash_auth: {password_hash_auth:?}");
+    trace!("salt_server_auth: {salt_server_auth:?}");
+
     argon2.hash_password(password_hash_auth.as_bytes(), &salt_server_auth)
         .unwrap()
         .to_string()
 }
 
-pub fn decrypt_mek(password: String, encrypted_mek_password: Vec<u8>, salt_data: String){
+pub fn decrypt_mek(password: String, encrypted_mek_password: Vec<u8>, salt_data: String, mek_password_nonce: Vec<u8>) -> Key<Aes256Gcm> {
     let argon2 = Argon2::default();
 
     let salt_data = SaltString::from_b64(&salt_data).unwrap();
 
-    //TODO
     let password_hash_data = argon2
         .hash_password(password.as_bytes(), &salt_data)
-        .unwrap()
-        .to_string();
+        .unwrap();
 
+    let password_key_hash = password_hash_data.hash.unwrap();
+    let password_key = Key::<Aes256Gcm>::from_slice(password_key_hash.as_bytes());
+    
+    let cipher = Aes256Gcm::new(password_key);
 
+    let mek_slice = cipher.decrypt(Nonce::from_slice(&mek_password_nonce), encrypted_mek_password.as_slice()).unwrap();
+
+    let mek = Key::<Aes256Gcm>::from_slice(&mek_slice);
+
+    mek.to_owned()
 }
 
 pub fn encrypt_note(

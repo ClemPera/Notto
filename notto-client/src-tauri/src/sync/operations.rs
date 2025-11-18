@@ -1,5 +1,5 @@
 use shared::{LoginRequestParams, User};
-use tauri_plugin_log::log::debug;
+use tauri_plugin_log::log::{trace, debug};
 
 pub fn insert_note(){
 
@@ -26,8 +26,10 @@ pub fn login_request(params: LoginRequestParams, instance: String) -> shared::Lo
     client.get(instance + "/login").query(&params).send().unwrap().json().unwrap()
 }
 
-pub fn login(params: shared::LoginParams, instance: String) -> shared::Login{
+pub fn login(params: shared::LoginParams, instance: String) -> Result<shared::Login, Box<dyn std::error::Error>> {
     let client = reqwest::blocking::Client::new();
 
-    client.post(instance + "/login").json(&params).send().unwrap().json().unwrap()
+    let response = client.post(instance + "/login").json(&params).send().unwrap().error_for_status()?;
+
+    return Ok(response.json().unwrap())
 }

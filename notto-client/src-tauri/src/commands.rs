@@ -152,18 +152,18 @@ pub fn test(state: State<'_, Mutex<AppState>>) -> Result<(), CommandError> {
 }
 
 #[tauri::command]
-pub fn set_user(state: State<'_, Mutex<AppState>>, id: u32) -> Result<(), CommandError> {
+pub fn set_user(state: State<'_, Mutex<AppState>>, username: String) -> Result<(), CommandError> {
     let mut state = state.lock().unwrap();
     
     let user = {
         let conn = state.database.lock().unwrap();
-        match db::operations::get_user(&conn, id).unwrap() {
+        match db::operations::get_user(&conn, username).unwrap() {
             Some(u) => u,
             None => return Err(CommandError { message: "User doesn't exist".to_string() })
         }
     };
 
-    state.id_user = Some(id);
+    state.id_user = Some(user.id.unwrap());
 
     state.master_encryption_key = Some(user.master_encryption_key);
 
@@ -171,13 +171,13 @@ pub fn set_user(state: State<'_, Mutex<AppState>>, id: u32) -> Result<(), Comman
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn sync_create_account(state: State<'_, Mutex<AppState>>, id_user: u32, password: String, instance: Option<String>) -> Result<(), CommandError> {
+pub fn sync_create_account(state: State<'_, Mutex<AppState>>, username: String, password: String, instance: Option<String>) -> Result<(), CommandError> {
     trace!("create account command received");
     
     let mut state = state.lock().unwrap();
     
     let conn = state.database.lock().unwrap();
-    let user = db::operations::get_user(&conn, id_user).unwrap().unwrap();
+    let user = db::operations::get_user(&conn, username).unwrap().unwrap();
     let account = crypt::create_account(password, state.master_encryption_key.unwrap());
     
     trace!("create account: start creating");
@@ -191,20 +191,38 @@ pub fn sync_create_account(state: State<'_, Mutex<AppState>>, id_user: u32, pass
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn sync_login(state: State<'_, Mutex<AppState>>, id_user: u32, password: String, instance: Option<String>) -> Result<(), CommandError> {
+pub fn sync_login(state: State<'_, Mutex<AppState>>, username: String, password: String, instance: Option<String>) -> Result<(), CommandError> {
     trace!("create account command received");
 
     let mut state = state.lock().unwrap();
-    let conn = state.database.lock().unwrap();
-    
-    let login_data = sync::login(&conn, id_user, password.clone(), instance);
+
+    let login_data = {
+        let conn = state.database.lock().unwrap();
+        sync::login(&conn, username.clone(), password.clone(), instance)
+    };
     debug!("account has been logged in");
 
-    crypt::decrypt_mek(password, login_data.encrypted_mek_password, login_data.salt_data);
+    let mut user = {
+        let conn = state.database.lock().unwrap();
+        match db::operations::get_user(&conn, username).unwrap() {
+            Some(u) => u,
+            None => return Err(CommandError { message: "User doesn't exist".to_string() })
+        }
+    };
 
-    //TODO: store mek inside state and inside db per user
+    //TODO: if !user.has_mek() then do not decrypt mek?
+    //TODO: handle if user account not created locally?
 
-    //TODO: store token inside db per user
+    let mek = crypt::decrypt_mek(password, login_data.encrypted_mek_password, login_data.salt_data, login_data.mek_password_nonce);
+    state.master_encryption_key = Some(mek);
+
+    user.master_encryption_key = mek;
+    user.token = Some(login_data.token);
+
+    {
+        let conn = state.database.lock().unwrap();
+        db::operations::update_user(&conn, user);
+    }
 
     Ok(())
 }

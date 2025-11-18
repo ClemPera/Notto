@@ -6,7 +6,6 @@ import Home from "./components/Home";
 
 function App() {
   const { userId, setUserId } = useGeneral();
-  const user_id_to_change = 1;
   
   // async function test() {
   //   await invoke("test", {  }).then(v => console.info(v)).catch((e) => console.error(e));
@@ -17,8 +16,8 @@ function App() {
   
   useEffect(() => {
     invoke("init").catch((e) => console.error(e));
-    invoke("set_user", { id: user_id_to_change })
-      .then(() => setUserId(user_id_to_change))
+    invoke("set_user", { username: "test_account" })
+      .then(() => setUserId(1))
       .catch((e) => console.error(e));
   }, [userId])
 
