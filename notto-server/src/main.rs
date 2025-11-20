@@ -19,9 +19,9 @@ async fn main() {
     let pool = Pool::new(env::var("DATABASE_URL").unwrap().as_str());
 
     let app = Router::new()
-        .route("/note", post(insert_note))
-        .route("/note", put(update_note))
+        .route("/note", post(send_note))
         .route("/note", get(select_notes))
+        
         .route("/create_account", post(insert_user)) //Create account
         // .route("/user", put()) //Update user
         .route("/login", get(login_request)) //Request login
@@ -46,26 +46,20 @@ async fn user_verify(conn: &mut Conn , id: u32, token: Vec<u8>) -> Result<(), St
     }
 }
 
-async fn insert_note(State(pool): State<Pool>, Json(sent_note): Json<shared::SentNote>) -> Result<StatusCode, StatusCode> {
+async fn send_note(State(pool): State<Pool>, Json(sent_note): Json<shared::SentNote>) -> Result<Json<Option<u64>>, StatusCode> {
     let note: schema::Note = sent_note.note.into();
     let mut conn = pool.get_conn().await.unwrap();
 
     user_verify(&mut conn, note.id_user, sent_note.token).await?;
 
-    note.insert(&mut conn).await;
+    match note.id {
+        Some(_) => note.update(&mut conn).await,
+        None => note.insert(&mut conn).await
+    }
 
-    Ok(StatusCode::OK)
-}
+    let note_id = conn.last_insert_id();
 
-async fn update_note(State(pool): State<Pool>, Json(sent_note): Json<shared::SentNote>) -> Result<StatusCode, StatusCode> {
-    let note: schema::Note = sent_note.note.into();
-    let mut conn = pool.get_conn().await.unwrap();
-
-    user_verify(&mut conn, note.id_user, sent_note.token).await?;
-
-    note.update(&mut conn).await;
-
-    Ok(StatusCode::OK)
+    Ok(Json(note_id))
 }
 
 async fn select_notes(
@@ -133,6 +127,7 @@ async fn login(
 
     //Response
     Ok(Json(shared::Login {
+        id_server: user.id.unwrap(),
         salt_data: user.salt_data,
         encrypted_mek_password: user.encrypted_mek_password,
         mek_password_nonce: user.mek_password_nonce,

@@ -63,6 +63,7 @@ pub fn create_user(conn: &Connection, username: String) -> Result<User, Box<dyn 
 
     let user = User {
         id: None,
+        id_server: None,
         username,
         master_encryption_key: user_encryption_data.master_encryption_key,
         salt_recovery_data: user_encryption_data.salt_recovery_data.to_string(),

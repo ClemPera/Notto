@@ -44,6 +44,17 @@ impl From<shared::Note> for Note {
 impl Note {
     //TODO: pub async fn create(&self, conn: &mut Conn) {}
 
+    pub async fn select(&self, conn: &mut Conn) -> Vec<Self> {
+        conn.exec(
+            "SELECT * FROM note WHERE id = :id",
+            params!(
+                "id" => &self.id
+            ),
+        )
+        .await
+        .unwrap()
+    }
+
     pub async fn insert(&self, conn: &mut Conn) {
         conn.exec_drop(
             "INSERT INTO note (id_user, title, content, nonce, created_at) 
@@ -68,7 +79,8 @@ impl Note {
             params!(
                 "title" => &self.title,
                 "content" => &self.content,
-                "nonce" => &self.nonce
+                "nonce" => &self.nonce,
+                "id" => &self.id
             ),
         )
         .await

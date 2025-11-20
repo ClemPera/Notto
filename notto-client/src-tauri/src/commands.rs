@@ -217,6 +217,7 @@ pub fn sync_login(state: State<'_, Mutex<AppState>>, username: String, password:
     state.master_encryption_key = Some(mek);
 
     user.master_encryption_key = mek;
+    user.id_server = Some(login_data.id_server);
     user.token = Some(login_data.token);
 
     {
