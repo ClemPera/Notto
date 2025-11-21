@@ -12,7 +12,7 @@ pub struct Note {
     pub title: String,
     pub content: Vec<u8>,
     pub nonce: Vec<u8>,
-    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
 }
 
 impl FromRow for Note {
@@ -23,7 +23,7 @@ impl FromRow for Note {
             title: row.get(2).ok_or(FromRowError(row.clone()))?,
             content: row.get(3).ok_or(FromRowError(row.clone()))?,
             nonce: row.get(4).ok_or(FromRowError(row.clone()))?,
-            created_at: row.get(5).ok_or(FromRowError(row.clone()))?,
+            updated_at: row.get(5).ok_or(FromRowError(row.clone()))?,
         })
     }
 }
@@ -36,7 +36,7 @@ impl From<shared::Note> for Note {
             title: note.title,
             content: note.content,
             nonce: note.nonce,
-            created_at: note.created_at
+            updated_at: note.updated_at
         }
     }
 }
@@ -44,8 +44,8 @@ impl From<shared::Note> for Note {
 impl Note {
     //TODO: pub async fn create(&self, conn: &mut Conn) {}
 
-    pub async fn select(&self, conn: &mut Conn) -> Vec<Self> {
-        conn.exec(
+    pub async fn select(&self, conn: &mut Conn) -> Self {
+        conn.exec_first(
             "SELECT * FROM note WHERE id = :id",
             params!(
                 "id" => &self.id
@@ -53,18 +53,19 @@ impl Note {
         )
         .await
         .unwrap()
+        .unwrap()
     }
 
     pub async fn insert(&self, conn: &mut Conn) {
         conn.exec_drop(
-            "INSERT INTO note (id_user, title, content, nonce, created_at) 
-            VALUES (:id_user, :title, :content, :nonce, :created_at)",
+            "INSERT INTO note (id_user, title, content, nonce, updated_at) 
+            VALUES (:id_user, :title, :content, :nonce, :updated_at)",
             params!(
                 "id_user" => &self.id_user,
                 "title" => &self.title,
                 "content" => &self.content,
                 "nonce" => &self.nonce,
-                "created_at" => &self.created_at
+                "updated_at" => &self.updated_at
             ),
         )
         .await
@@ -87,11 +88,12 @@ impl Note {
         .unwrap();
     }
 
-    pub async fn select_all_from_user(conn: &mut Conn, id_user: u32) -> Vec<Self> {
+    pub async fn select_all_from_user(conn: &mut Conn, id_user: u32, after_datetime: NaiveDateTime) -> Vec<Self> {
         conn.exec(
-            "SELECT * FROM note WHERE id_user = :id_user",
+            "SELECT * FROM note WHERE id_user = :id_user AND updated_on >= :updated_on",
             params!(
-                "id_user" => id_user
+                "id_user" => id_user,
+                "updated_on" => after_datetime
             ),
         )
         .await
@@ -162,6 +164,18 @@ impl From<shared::User> for User {
 impl User {
     //TODO: pub async fn create(&self, conn: &mut Conn) {}
 
+    pub async fn select(conn: &mut Conn, username: String) -> Self {
+        conn.exec_first(
+            "SELECT * FROM user WHERE username = :username",
+            params!(
+                "username" => username
+            ),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+    }
+
     pub async fn insert(&self, conn: &mut Conn) {
         conn.exec_drop("INSERT INTO user (username, stored_password_hash, stored_recovery_hash, encrypted_mek_password, mek_password_nonce,
                 encrypted_mek_recovery, mek_recovery_nonce, salt_auth, salt_data, salt_recovery_auth, salt_recovery_data, salt_server_auth, salt_server_recovery) 
@@ -182,18 +196,6 @@ impl User {
                 "salt_server_auth" => &self.salt_server_auth,
                 "salt_server_recovery" => &self.salt_server_recovery,
             )).await.unwrap();
-    }
-
-    pub async fn select(conn: &mut Conn, username: String) -> Self {
-        conn.exec_first(
-            "SELECT * FROM user WHERE username = :username",
-            params!(
-                "username" => username
-            ),
-        )
-        .await
-        .unwrap()
-        .unwrap()
     }
 }
 

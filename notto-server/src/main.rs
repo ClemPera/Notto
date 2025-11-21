@@ -51,9 +51,16 @@ async fn send_note(State(pool): State<Pool>, Json(sent_note): Json<shared::SentN
     let mut conn = pool.get_conn().await.unwrap();
 
     user_verify(&mut conn, note.id_user, sent_note.token).await?;
-
+    
     match note.id {
-        Some(_) => note.update(&mut conn).await,
+        Some(_) => {
+            let selected_note = note.select(&mut conn).await;
+            if selected_note.updated_at > note.updated_at {
+                return Err(StatusCode::CONFLICT);
+            }
+            
+            note.update(&mut conn).await;
+        },
         None => note.insert(&mut conn).await
     }
 

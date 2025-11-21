@@ -26,13 +26,14 @@ pub struct Note {
     pub title: String,
     pub content: Vec<u8>,
     pub nonce: Vec<u8>,
-    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct SelectNoteParams {
     pub id_user: u32,
-    pub token: Vec<u8>
+    pub token: Vec<u8>,
+    pub updated_at: NaiveDateTime
 }
 
 #[derive(Deserialize, Serialize, Debug)]
