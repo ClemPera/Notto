@@ -1,11 +1,14 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 // #[tauri::command(rename_all = "snake_case")]
 
-use std::sync::Mutex;
+use std::{time::Duration, thread::sleep};
+
+use tokio::{sync::Mutex};
 
 use aes_gcm::{Aes256Gcm, Key};
 use rusqlite::Connection;
 use tauri::Manager;
+use tauri_plugin_log::log::debug;
 
 use crate::db::schema;
 
@@ -32,11 +35,17 @@ pub fn run() {
         .setup(|app| {
             let db_path = app.path().app_data_dir().unwrap().join("notto.db");
 
-            app.manage(Mutex::new(AppState{ 
+            let app_state = Mutex::new(AppState{ 
                 database: db::init(db_path).unwrap(),
                 master_encryption_key: None,
                 id_user: None,
-            }));
+            });
+
+            let app_handle_clone = app.app_handle().clone();
+            tauri::async_runtime::spawn(sync::service::run(app_handle_clone));
+
+            app.manage(app_state);
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

@@ -1,4 +1,6 @@
-use std::{path::PathBuf, sync::Mutex};
+use std::{path::PathBuf};
+
+use tokio::sync::Mutex;
 
 use rusqlite::Connection;
 use tauri_plugin_log::log::{debug, trace};

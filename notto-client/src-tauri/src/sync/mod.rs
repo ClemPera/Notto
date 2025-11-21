@@ -3,6 +3,7 @@ use crate::{crypt, schema::User};
 use tauri_plugin_log::log::{trace, debug};
 
 mod operations;
+pub mod service;
 
 pub fn create_account(conn: &Connection, user: User, account: crypt::AccountEncryptionData, instance: Option<String>){
     let instance = match instance {
