@@ -18,7 +18,7 @@ pub struct NoteData {
     pub id: u32,
     pub title: String,
     pub content: String,
-    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
 }
 
 #[derive(Debug)]
@@ -224,7 +224,7 @@ pub fn decrypt_note(note: schema::Note, mek: Key<Aes256Gcm>) -> Result<NoteData,
         id: note.id.unwrap(),
         title: note.title,
         content: String::from_utf8(plaintext).unwrap(),
-        created_at: note.created_at.unwrap(),
+        updated_at: note.updated_at
     };
 
     Ok(data_unser)

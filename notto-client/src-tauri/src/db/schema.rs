@@ -13,8 +13,8 @@ pub struct Note {
     pub id_user: Option<u32>,
     pub title: String,
     pub content: Vec<u8>, //Serialized encrypted content.
-    pub nonce: Vec<u8>, //Nonce used to decrypt data.?
-    pub created_at: Option<NaiveDateTime>
+    pub nonce: Vec<u8>, //Nonce used to decrypt data.
+    pub updated_at: NaiveDateTime,
 }
 
 impl Note {
@@ -26,7 +26,7 @@ impl Note {
                 title TEXT,
                 content BLOB,
                 nonce BLOB,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                updated_at DATETIME
             )", 
             (), // empty list of parameters.
         ).unwrap();
@@ -36,8 +36,8 @@ impl Note {
 
     pub fn insert(&self, conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
         conn.execute(
-            "INSERT INTO note (title, content, nonce, id_user) VALUES (?1, ?2, ?3, ?4)", 
-            (&self.title, &self.content, &self.nonce, &self.id_user)
+            "INSERT INTO note (title, content, nonce, id_user, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)", 
+            (&self.title, &self.content, &self.nonce, &self.id_user, &self.updated_at)
         ).unwrap();
 
         Ok(())
@@ -54,7 +54,7 @@ impl Note {
                     title: row.get(2)?,
                     content: row.get(3)?,
                     nonce: row.get(4)?,
-                    created_at: row.get(5)?
+                    updated_at: row.get(6)?
                 })
             }
         ).unwrap();
@@ -74,7 +74,7 @@ impl Note {
                     title: row.get(2)?,
                     content: row.get(3)?,
                     nonce: row.get(4)?,
-                    created_at: row.get(5)?,
+                    updated_at: row.get(6)?,
                 })
             }
         ).unwrap();
@@ -89,8 +89,8 @@ impl Note {
     }
 
     pub fn update(&self, conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
-        conn.execute("UPDATE note SET title = ?, content = ?, nonce = ? WHERE id = ?",
-            (&self.title, &self.content, &self.nonce, &self.id))?;
+        conn.execute("UPDATE note SET title = ?, content = ?, nonce = ?, updated_at = ? WHERE id = ?",
+            (&self.title, &self.content, &self.nonce, &self.updated_at, &self.id))?;
 
         Ok(())
     }

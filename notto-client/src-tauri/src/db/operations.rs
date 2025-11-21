@@ -1,4 +1,5 @@
 use aes_gcm::{Aes256Gcm, Key};
+use chrono::{DateTime, Local, NaiveDateTime};
 use rusqlite::Connection;
 use serde::Serialize;
 use tauri_plugin_log::log::debug;
@@ -15,7 +16,7 @@ pub fn create_note(conn: &Connection, id_user: u32, title: String, mek: Key<Aes2
         content,
         nonce,
         title,
-        created_at: None,
+        updated_at: Local::now().naive_utc()
     };
 
     note.insert(conn,).unwrap();
@@ -48,7 +49,7 @@ pub fn update_note(conn: &Connection, note_data: NoteData, mek: Key<Aes256Gcm>) 
         title: note_data.title,
         content,
         nonce,
-        created_at: None,
+        updated_at: note_data.updated_at,
     };
     
     note.update(conn).unwrap();

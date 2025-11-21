@@ -43,7 +43,7 @@ impl From<User> for FilteredUser {
 pub struct NoteMetadata {
     pub id: u32,
     pub title: String,
-    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
 }
 
 impl From<Note> for NoteMetadata {
@@ -51,7 +51,7 @@ impl From<Note> for NoteMetadata {
         NoteMetadata {
             id: note.id.unwrap(),
             title: note.title,
-            created_at: note.created_at.unwrap()
+            updated_at: note.updated_at
         }
     }
 }
@@ -94,7 +94,6 @@ pub async fn edit_note(state: State<'_, Mutex<AppState>>, note: NoteData) -> Res
     let state = state.lock().await;
 
     let conn = state.database.lock().await;
-    
 
     db::operations::update_note(&conn, note, state.master_encryption_key.unwrap()).unwrap();
 
