@@ -58,10 +58,3 @@ pub fn login(conn: &Connection, username: String, password: String, instance: Op
 
     operations::login(login_params, instance).unwrap()
 }
-
-pub async fn sync(conn: &Mutex<Connection>,) {
-    let conn = conn.lock().await;
-
-    
-
-}

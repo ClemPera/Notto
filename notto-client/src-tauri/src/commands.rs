@@ -164,9 +164,10 @@ pub async fn set_user(state: State<'_, Mutex<AppState>>, username: String) -> Re
         }
     };
 
-    state.id_user = Some(user.id.unwrap());
-
     state.master_encryption_key = Some(user.master_encryption_key);
+    state.id_user = Some(user.id.unwrap());
+    state.token = user.token;
+    state.instance = user.instance;
 
     Ok(())
 }
@@ -199,7 +200,7 @@ pub async fn sync_login(state: State<'_, Mutex<AppState>>, username: String, pas
 
     let login_data = {
         let conn = state.database.lock().await;
-        sync::login(&conn, username.clone(), password.clone(), instance)
+        sync::login(&conn, username.clone(), password.clone(), instance.clone())
     };
     debug!("account has been logged in");
 
@@ -216,6 +217,8 @@ pub async fn sync_login(state: State<'_, Mutex<AppState>>, username: String, pas
 
     let mek = crypt::decrypt_mek(password, login_data.encrypted_mek_password, login_data.salt_data, login_data.mek_password_nonce);
     state.master_encryption_key = Some(mek);
+    state.token = Some(login_data.token.clone());
+    state.instance = instance;
 
     user.master_encryption_key = mek;
     user.id_server = Some(login_data.id_server);

@@ -72,13 +72,13 @@ async fn send_note(State(pool): State<Pool>, Json(sent_note): Json<shared::SentN
 async fn select_notes(
     State(pool): State<Pool>,
     Query(params): Query<shared::SelectNoteParams>,
-) -> Result<Json<Vec<schema::Note>>, StatusCode> {
+) -> Result<Json<Vec<shared::Note>>, StatusCode> {
     let mut conn = pool.get_conn().await.unwrap();
     user_verify(&mut conn, params.id_user, params.token).await?;
 
-    let notes = schema::Note::select_all_from_user(&mut conn, params.id_user).await;
+    let notes = schema::Note::select_all_from_user(&mut conn, params.id_user, params.updated_at).await;
 
-    Ok(Json(notes))
+    Ok(Json(notes.into()))
 }
 
 async fn insert_user(State(pool): State<Pool>, Json(user): Json<shared::User>) {

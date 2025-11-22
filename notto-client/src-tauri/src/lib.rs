@@ -17,10 +17,13 @@ mod db;
 mod crypt;
 mod sync;
 
+#[derive(Debug)]
 pub struct AppState {
   database: Mutex<Connection>,
   master_encryption_key: Option<Key<Aes256Gcm>>,
-  id_user: Option<u32>
+  id_user: Option<u32>,
+  token: Option<Vec<u8>>,
+  instance: Option<String>
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -39,6 +42,7 @@ pub fn run() {
                 database: db::init(db_path).unwrap(),
                 master_encryption_key: None,
                 id_user: None,
+                token: None
             });
 
             let app_handle_clone = app.app_handle().clone();

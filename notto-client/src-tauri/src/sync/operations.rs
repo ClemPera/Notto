@@ -13,6 +13,7 @@ pub fn select_notes(params :SelectNoteParams, instance: String) -> Result<Vec<No
     let client = reqwest::blocking::Client::new();
 
     let response = client.get(instance + "/note").query(&params).send().unwrap().error_for_status()?;
+    //TODO: handle StatusCode::Conflict at some point
 
     Ok(response.json().unwrap())
 }

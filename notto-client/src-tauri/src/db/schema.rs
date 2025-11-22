@@ -17,7 +17,42 @@ pub struct Note {
     pub updated_at: NaiveDateTime,
 }
 
+impl From<shared::Note> for Note {
+    fn from(note: shared::Note) -> Self {
+        Note {
+            id: note.id,
+            id_user: Some(note.id_user),
+            title: note.title,
+            content: note.content,
+            nonce: note.nonce,
+            updated_at: note.updated_at
+        }
+    }
+}
+
 impl Note {
+    pub fn select(conn: &Connection, id: u32) -> Result<Option<Self>, Box<dyn std::error::Error>> {
+        let note = match conn.query_one(
+            "SELECT * FROM note WHERE id = ?", 
+            (id,),
+            |row| {
+                Ok(Note{
+                    id: row.get(0)?,
+                    id_user: row.get(1)?,
+                    title: row.get(2)?,
+                    content: row.get(3)?,
+                    nonce: row.get(4)?,
+                    updated_at: row.get(6)?
+                })
+            }
+        ) {
+            Ok(note) => Some(note),
+            Err(_) => None
+        };
+
+        Ok(note)
+    }
+
     pub fn create(conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
         conn.execute(
         "CREATE TABLE IF NOT EXISTS note (
@@ -41,25 +76,6 @@ impl Note {
         ).unwrap();
 
         Ok(())
-    }
-
-    pub fn select(conn: &Connection, id: u32) -> Result<Self, Box<dyn std::error::Error>> {
-        let note = conn.query_one(
-            "SELECT * FROM note WHERE id = ?", 
-            (id,),
-            |row| {
-                Ok(Note{
-                    id: row.get(0)?,
-                    id_user: row.get(1)?,
-                    title: row.get(2)?,
-                    content: row.get(3)?,
-                    nonce: row.get(4)?,
-                    updated_at: row.get(6)?
-                })
-            }
-        ).unwrap();
-
-        Ok(note)
     }
 
     pub fn select_all(conn: &Connection, id_user: u32) -> Result<Vec<Self>, Box<dyn std::error::Error>> {
@@ -108,7 +124,8 @@ pub struct User {
     pub salt_recovery_data: String,
     pub mek_recovery_nonce: Vec<u8>,
     pub encrypted_mek_recovery: Vec<u8>,
-    pub token: Option<Vec<u8>>
+    pub token: Option<Vec<u8>>,
+    pub instance: Option<String>
 }
 
 impl User {
@@ -123,6 +140,7 @@ impl User {
                 mek_recovery_nonce BLOB,
                 encrypted_mek_recovery BLOB,
                 token TEXT
+                instance TEXT
             )", 
             (), // empty list of parameters.
         ).unwrap();
@@ -132,8 +150,8 @@ impl User {
 
     pub fn insert(&self, conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
         conn.execute(
-            "INSERT INTO user (id, id_server, username, master_encryption_key, salt_recovery_data, mek_recovery_nonce, encrypted_mek_recovery, token) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)", 
-            (&self.id, &self.id_server, &self.username, &self.master_encryption_key.to_vec(), &self.salt_recovery_data, &self.mek_recovery_nonce, &self.encrypted_mek_recovery, &self.token)
+            "INSERT INTO user (id, id_server, username, master_encryption_key, salt_recovery_data, mek_recovery_nonce, encrypted_mek_recovery, token, instance) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)", 
+            (&self.id, &self.id_server, &self.username, &self.master_encryption_key.to_vec(), &self.salt_recovery_data, &self.mek_recovery_nonce, &self.encrypted_mek_recovery, &self.token, &self.instance)
         ).unwrap();
 
         Ok(())
@@ -156,7 +174,8 @@ impl User {
                     salt_recovery_data: row.get(4)?,
                     mek_recovery_nonce: row.get(5)?,
                     encrypted_mek_recovery: row.get(6)?,
-                    token: row.get(7)?
+                    token: row.get(7)?,
+                    instance: row.get(8)?
                 })
             }
         ) {
@@ -186,7 +205,8 @@ impl User {
                     salt_recovery_data: row.get(4)?,
                     mek_recovery_nonce: row.get(5)?,
                     encrypted_mek_recovery: row.get(6)?,
-                    token: row.get(7)?
+                    token: row.get(7)?,
+                    instance: row.get(8)?
                 })
             }
         ).unwrap();
@@ -201,8 +221,8 @@ impl User {
     }
     
     pub fn update(&self, conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
-        conn.execute("UPDATE user SET username = ?, master_encryption_key = ?, salt_recovery_data = ?, mek_recovery_nonce = ?, encrypted_mek_recovery = ?, token = ? WHERE id = ?",
-        (&self.username, &self.master_encryption_key.to_vec(), &self.salt_recovery_data, &self.mek_recovery_nonce, &self.encrypted_mek_recovery, &self.token, &self.id))?;
+        conn.execute("UPDATE user SET username = ?, master_encryption_key = ?, salt_recovery_data = ?, mek_recovery_nonce = ?, encrypted_mek_recovery = ?, token = ?, instance = ? WHERE id = ?",
+        (&self.username, &self.master_encryption_key.to_vec(), &self.salt_recovery_data, &self.mek_recovery_nonce, &self.encrypted_mek_recovery, &self.token, &self.id, &self.instance))?;
         
         Ok(())
     }
