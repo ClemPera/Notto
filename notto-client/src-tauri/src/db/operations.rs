@@ -45,7 +45,7 @@ pub fn update_note(conn: &Connection, note_data: NoteData, mek: Key<Aes256Gcm>) 
     
     let note = Note {
         id: Some(note_data.id),
-        id_user: None,
+        username: None,
         title: note_data.title,
         content,
         nonce,
@@ -64,7 +64,6 @@ pub fn create_user(conn: &Connection, username: String) -> Result<User, Box<dyn 
 
     let user = User {
         id: None,
-        id_server: None,
         username,
         master_encryption_key: user_encryption_data.master_encryption_key,
         salt_recovery_data: user_encryption_data.salt_recovery_data.to_string(),

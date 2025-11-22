@@ -134,7 +134,6 @@ async fn login(
 
     //Response
     Ok(Json(shared::Login {
-        id_server: user.id.unwrap(),
         salt_data: user.salt_data,
         encrypted_mek_password: user.encrypted_mek_password,
         mek_password_nonce: user.mek_password_nonce,

@@ -115,7 +115,6 @@ impl Note {
 #[derive(Debug)]
 pub struct User {
     pub id: Option<u32>,
-    pub id_server: Option<u32>,
     pub username: String,
 
     //TODO: Do not store that in plain text but use give the user the possibility to use biometric to decrypt?
@@ -133,7 +132,6 @@ impl User {
         conn.execute(
         "CREATE TABLE IF NOT EXISTS user (
                 id INTEGER PRIMARY KEY,
-                id_server INTEGER,
                 username TEXT,
                 master_encryption_key BLOB,
                 salt_recovery_data TEXT,
@@ -150,8 +148,8 @@ impl User {
 
     pub fn insert(&self, conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
         conn.execute(
-            "INSERT INTO user (id, id_server, username, master_encryption_key, salt_recovery_data, mek_recovery_nonce, encrypted_mek_recovery, token, instance) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)", 
-            (&self.id, &self.id_server, &self.username, &self.master_encryption_key.to_vec(), &self.salt_recovery_data, &self.mek_recovery_nonce, &self.encrypted_mek_recovery, &self.token, &self.instance)
+            "INSERT INTO user (id, username, master_encryption_key, salt_recovery_data, mek_recovery_nonce, encrypted_mek_recovery, token, instance) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)", 
+            (&self.id, &self.username, &self.master_encryption_key.to_vec(), &self.salt_recovery_data, &self.mek_recovery_nonce, &self.encrypted_mek_recovery, &self.token, &self.instance)
         ).unwrap();
 
         Ok(())
@@ -162,20 +160,19 @@ impl User {
             "SELECT * FROM user WHERE username = ?", 
             (username,),
             |row| {
-                let mek: Vec<u8> = row.get(3)?;
+                let mek: Vec<u8> = row.get(2)?;
                 let mek: [u8; 32] = mek.try_into().unwrap();
                 let mek: Key<Aes256Gcm> = mek.into();
 
                 Ok(User{
                     id: row.get(0)?,
-                    id_server: row.get(1)?,
-                    username: row.get(2)?,
+                    username: row.get(1)?,
                     master_encryption_key: mek,
-                    salt_recovery_data: row.get(4)?,
-                    mek_recovery_nonce: row.get(5)?,
-                    encrypted_mek_recovery: row.get(6)?,
-                    token: row.get(7)?,
-                    instance: row.get(8)?
+                    salt_recovery_data: row.get(3)?,
+                    mek_recovery_nonce: row.get(4)?,
+                    encrypted_mek_recovery: row.get(5)?,
+                    token: row.get(6)?,
+                    instance: row.get(7)?
                 })
             }
         ) {
@@ -193,20 +190,19 @@ impl User {
         let rows = stmt.query_map(
             [],
             |row| {
-                let mek: Vec<u8> = row.get(3)?;
+                let mek: Vec<u8> = row.get(2)?;
                 let mek: [u8; 32] = mek.try_into().unwrap();
                 let mek: Key<Aes256Gcm> = mek.into();
 
                 Ok(User{
                     id: row.get(0)?,
-                    id_server: row.get(1)?,
-                    username: row.get(2)?,
+                    username: row.get(1)?,
                     master_encryption_key: mek,
-                    salt_recovery_data: row.get(4)?,
-                    mek_recovery_nonce: row.get(5)?,
-                    encrypted_mek_recovery: row.get(6)?,
-                    token: row.get(7)?,
-                    instance: row.get(8)?
+                    salt_recovery_data: row.get(3)?,
+                    mek_recovery_nonce: row.get(4)?,
+                    encrypted_mek_recovery: row.get(5)?,
+                    token: row.get(6)?,
+                    instance: row.get(7)?
                 })
             }
         ).unwrap();

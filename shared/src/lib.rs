@@ -61,7 +61,6 @@ pub struct LoginParams {
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct Login {
-    pub id_server: u32,
     pub salt_data: String,
     pub encrypted_mek_password: Vec<u8>,
     pub mek_password_nonce: Vec<u8>,

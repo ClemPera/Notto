@@ -221,7 +221,6 @@ pub async fn sync_login(state: State<'_, Mutex<AppState>>, username: String, pas
     state.instance = instance;
 
     user.master_encryption_key = mek;
-    user.id_server = Some(login_data.id_server);
     user.token = Some(login_data.token);
 
     {
