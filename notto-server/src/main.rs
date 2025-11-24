@@ -1,4 +1,4 @@
-use std::env;
+use std::{env, result};
 
 use axum::{
     Json, Router,
@@ -9,6 +9,7 @@ use axum::{
 use dotenv::dotenv;
 use mysql_async::{Conn, Pool};
 use rand_core::{OsRng, TryRngCore};
+use shared::SentNotesResult;
 
 mod schema;
 
@@ -46,27 +47,37 @@ async fn user_verify(conn: &mut Conn , id: u32, token: Vec<u8>) -> Result<(), St
     }
 }
 
-async fn send_note(State(pool): State<Pool>, Json(sent_note): Json<shared::SentNote>) -> Result<Json<Option<u64>>, StatusCode> {
-    let note: schema::Note = sent_note.note.into();
+async fn send_note(State(pool): State<Pool>, Json(sent_notes): Json<shared::SentNotes>) -> Result<Json<Vec<SentNotesResult>>, StatusCode> {
+    let notes: Vec<schema::Note> = sent_notes.notes.into_iter().map(|n| n.into()).collect();
     let mut conn = pool.get_conn().await.unwrap();
 
-    user_verify(&mut conn, note.id_user, sent_note.token).await?;
+    user_verify(&mut conn, sent_notes.id_user, sent_notes.token).await?;
+
+    let mut result: Vec<SentNotesResult> = vec![];
     
-    match note.id {
-        Some(_) => {
-            let selected_note = note.select(&mut conn).await;
-            if selected_note.updated_at > note.updated_at {
-                return Err(StatusCode::CONFLICT);
-            }
-            
-            note.update(&mut conn).await;
-        },
-        None => note.insert(&mut conn).await
+    for note in notes {
+        match note.id {
+            Some(_) => {
+                let selected_note = note.select(&mut conn).await;
+                if selected_note.updated_at > note.updated_at {
+                    result.push(SentNotesResult { id_client: note.id_client, id_server: note.id.unwrap().into(), status: shared::NoteStatus::Conflict });
+                }else{
+                    note.update(&mut conn).await;
+
+                    let note_id = conn.last_insert_id().unwrap();
+                    result.push(SentNotesResult { id_client: note.id_client, id_server: note_id, status: shared::NoteStatus::Ok });
+                }
+            },
+            None => {
+                note.insert(&mut conn).await;
+
+                let note_id = conn.last_insert_id().unwrap();
+                result.push(SentNotesResult { id_client: note.id_client, id_server: note_id, status: shared::NoteStatus::Ok });
+            },
+        }
     }
 
-    let note_id = conn.last_insert_id();
-
-    Ok(Json(note_id))
+    Ok(Json(result))
 }
 
 async fn select_notes(
@@ -78,7 +89,9 @@ async fn select_notes(
 
     let notes = schema::Note::select_all_from_user(&mut conn, params.id_user, params.updated_at).await;
 
-    Ok(Json(notes.into()))
+    let notes = notes.into_iter().map(|note| note.into()).collect();
+
+    Ok(Json(notes))
 }
 
 async fn insert_user(State(pool): State<Pool>, Json(user): Json<shared::User>) {

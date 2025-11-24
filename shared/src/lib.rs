@@ -21,7 +21,8 @@ pub struct User {
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct Note {
-    pub id: Option<u32>,
+    pub id: u32,
+    pub id_server: Option<u64>,
     pub id_user: u32,
     pub title: String,
     pub content: Vec<u8>,
@@ -37,9 +38,23 @@ pub struct SelectNoteParams {
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-pub struct SentNote {
-    pub note: Note,
-    pub token: Vec<u8>
+pub struct SentNotes {
+    pub notes: Vec<Note>,
+    pub token: Vec<u8>,
+    pub id_user: u32,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+pub enum NoteStatus {
+    Ok,
+    Conflict,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct SentNotesResult {
+    pub id_client: u32,
+    pub id_server: u64, 
+    pub status: NoteStatus
 }
 
 #[derive(Deserialize, Serialize, Debug)]

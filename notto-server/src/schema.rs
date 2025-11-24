@@ -7,8 +7,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct Note {
-    pub id: Option<u32>,
-    pub id_user: u32,
+    pub id: Option<u64>,
+    pub id_client: u32, //id of the note on client
+    pub id_user: u32, 
     pub title: String,
     pub content: Vec<u8>,
     pub nonce: Vec<u8>,
@@ -19,11 +20,12 @@ impl FromRow for Note {
     fn from_row_opt(row: Row) -> Result<Self, FromRowError> {
         Ok(Note {
             id: row.get(0).ok_or(FromRowError(row.clone()))?,
-            id_user: row.get(1).ok_or(FromRowError(row.clone()))?,
-            title: row.get(2).ok_or(FromRowError(row.clone()))?,
-            content: row.get(3).ok_or(FromRowError(row.clone()))?,
-            nonce: row.get(4).ok_or(FromRowError(row.clone()))?,
-            updated_at: row.get(5).ok_or(FromRowError(row.clone()))?,
+            id_client: row.get(1).ok_or(FromRowError(row.clone()))?,
+            id_user: row.get(2).ok_or(FromRowError(row.clone()))?,
+            title: row.get(3).ok_or(FromRowError(row.clone()))?,
+            content: row.get(4).ok_or(FromRowError(row.clone()))?,
+            nonce: row.get(5).ok_or(FromRowError(row.clone()))?,
+            updated_at: row.get(6).ok_or(FromRowError(row.clone()))?,
         })
     }
 }
@@ -31,12 +33,27 @@ impl FromRow for Note {
 impl From<shared::Note> for Note {
     fn from(note: shared::Note) -> Self {
         Note {
-            id: note.id,
+            id: note.id_server,
+            id_client: note.id,
             id_user: note.id_user,
             title: note.title,
             content: note.content,
             nonce: note.nonce,
             updated_at: note.updated_at
+        }
+    }
+}
+
+impl Into<shared::Note> for Note {
+    fn into(self) -> shared::Note {
+        shared::Note {
+            id: self.id_client,
+            id_server: self.id,
+            id_user: self.id_user,
+            content: self.content,
+            nonce: self.nonce,
+            title: self.title,
+            updated_at: self.updated_at
         }
     }
 }
@@ -58,9 +75,10 @@ impl Note {
 
     pub async fn insert(&self, conn: &mut Conn) {
         conn.exec_drop(
-            "INSERT INTO note (id_user, title, content, nonce, updated_at) 
-            VALUES (:id_user, :title, :content, :nonce, :updated_at)",
+            "INSERT INTO note (id_client, id_user, title, content, nonce, updated_at) 
+            VALUES (:id_client, :id_user, :title, :content, :nonce, :updated_at)",
             params!(
+                "id_client" => &self.id_client,
                 "id_user" => &self.id_user,
                 "title" => &self.title,
                 "content" => &self.content,
