@@ -42,7 +42,8 @@ pub fn run() {
                 database: db::init(db_path).unwrap(),
                 master_encryption_key: None,
                 id_user: None,
-                token: None
+                token: None,
+                instance: None
             });
 
             let app_handle_clone = app.app_handle().clone();

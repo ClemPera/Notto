@@ -1,10 +1,10 @@
-use shared::{LoginRequestParams, Note, SelectNoteParams, SentNote, User};
+use shared::{LoginRequestParams, Note, SelectNoteParams, SentNotes, User};
 use tauri_plugin_log::log::{trace, debug};
 
-pub fn send_note(note: SentNote, instance: String) -> Result<Option<u64>, Box<dyn std::error::Error>> {
+pub fn send_notes(notes: SentNotes, instance: String) -> Result<Vec<shared::SentNotesResult>, Box<dyn std::error::Error>> {
     let client = reqwest::blocking::Client::new();
 
-    let response = client.post(instance + "/note").json(&note).send().unwrap().error_for_status()?;
+    let response = client.post(instance + "/note").json(&notes).send().unwrap().error_for_status()?;
 
     return Ok(response.json().unwrap())
 }
@@ -13,7 +13,6 @@ pub fn select_notes(params :SelectNoteParams, instance: String) -> Result<Vec<No
     let client = reqwest::blocking::Client::new();
 
     let response = client.get(instance + "/note").query(&params).send().unwrap().error_for_status()?;
-    //TODO: handle StatusCode::Conflict at some point
 
     Ok(response.json().unwrap())
 }

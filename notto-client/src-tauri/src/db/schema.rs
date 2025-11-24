@@ -10,27 +10,63 @@ use rusqlite::Error::QueryReturnedNoRows;
 #[derive(Debug)]
 pub struct Note {
     pub id: Option<u32>,
+    pub id_server: Option<u64>,
     pub id_user: Option<u32>,
     pub title: String,
     pub content: Vec<u8>, //Serialized encrypted content.
     pub nonce: Vec<u8>, //Nonce used to decrypt data.
     pub updated_at: NaiveDateTime,
+    pub synched: bool //true: note has already been sent with server
 }
 
 impl From<shared::Note> for Note {
     fn from(note: shared::Note) -> Self {
         Note {
-            id: note.id,
+            id: Some(note.id),
+            id_server: note.id_server,
             id_user: Some(note.id_user),
             title: note.title,
             content: note.content,
             nonce: note.nonce,
-            updated_at: note.updated_at
+            updated_at: note.updated_at,
+            synched: true
+        }
+    }
+}
+
+impl Into<shared::Note> for Note {
+    fn into(self) -> shared::Note {
+        shared::Note {
+            id: self.id.unwrap(),
+            id_server: self.id_server,
+            id_user: self.id_user.unwrap(),
+            title: self.title,
+            content: self.content,
+            nonce: self.nonce,
+            updated_at: self.updated_at,
         }
     }
 }
 
 impl Note {
+    pub fn create(conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
+        conn.execute(
+        "CREATE TABLE IF NOT EXISTS note (
+                id INTEGER PRIMARY KEY,
+                id_server INTEGER,
+                id_user INTEGER NOT NULL REFERENCES user(id),
+                title TEXT,
+                content BLOB,
+                nonce BLOB,
+                updated_at DATETIME,
+                synched INTEGER NOT NULL
+            )", 
+            (), // empty list of parameters.
+        ).unwrap();
+
+        Ok(())
+    }
+
     pub fn select(conn: &Connection, id: u32) -> Result<Option<Self>, Box<dyn std::error::Error>> {
         let note = match conn.query_one(
             "SELECT * FROM note WHERE id = ?", 
@@ -38,11 +74,13 @@ impl Note {
             |row| {
                 Ok(Note{
                     id: row.get(0)?,
-                    id_user: row.get(1)?,
-                    title: row.get(2)?,
-                    content: row.get(3)?,
-                    nonce: row.get(4)?,
-                    updated_at: row.get(6)?
+                    id_server: row.get(1)?,
+                    id_user: row.get(2)?,
+                    title: row.get(3)?,
+                    content: row.get(4)?,
+                    nonce: row.get(5)?,
+                    updated_at: row.get(6)?,
+                    synched: row.get(7)?
                 })
             }
         ) {
@@ -53,27 +91,18 @@ impl Note {
         Ok(note)
     }
 
-    pub fn create(conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn insert(&self, conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
         conn.execute(
-        "CREATE TABLE IF NOT EXISTS note (
-                id INTEGER PRIMARY KEY,
-                id_user INTEGER NOT NULL REFERENCES user(id),
-                title TEXT,
-                content BLOB,
-                nonce BLOB,
-                updated_at DATETIME
-            )", 
-            (), // empty list of parameters.
+            "INSERT INTO note (id_server, title, content, nonce, id_user, updated_at, synched) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)", 
+            (&self.id_server, &self.title, &self.content, &self.nonce, &self.id_user, &self.updated_at, &self.synched)
         ).unwrap();
 
         Ok(())
     }
 
-    pub fn insert(&self, conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
-        conn.execute(
-            "INSERT INTO note (title, content, nonce, id_user, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)", 
-            (&self.title, &self.content, &self.nonce, &self.id_user, &self.updated_at)
-        ).unwrap();
+    pub fn update(&self, conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
+        conn.execute("UPDATE note SET id_server = ?, title = ?, content = ?, nonce = ?, updated_at = ?, synched = ? WHERE id = ?",
+            (&self.id_server, &self.title, &self.content, &self.nonce, &self.updated_at, &self.synched, &self.id))?;
 
         Ok(())
     }
@@ -86,29 +115,24 @@ impl Note {
             |row| {
                 Ok(Note{
                     id: row.get(0)?,
-                    id_user: row.get(1)?,
-                    title: row.get(2)?,
-                    content: row.get(3)?,
-                    nonce: row.get(4)?,
+                    id_server: row.get(1)?,
+                    id_user: row.get(2)?,
+                    title: row.get(3)?,
+                    content: row.get(4)?,
+                    nonce: row.get(5)?,
                     updated_at: row.get(6)?,
+                    synched: row.get(7)?,
                 })
             }
         ).unwrap();
 
-        let mut users = Vec::new();
+        let mut notes = Vec::new();
 
-        for user in rows {
-            users.push(user.unwrap());
+        for note in rows {
+            notes.push(note.unwrap());
         }
 
-        Ok(users)
-    }
-
-    pub fn update(&self, conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
-        conn.execute("UPDATE note SET title = ?, content = ?, nonce = ?, updated_at = ? WHERE id = ?",
-            (&self.title, &self.content, &self.nonce, &self.updated_at, &self.id))?;
-
-        Ok(())
+        Ok(notes)
     }
 }
 

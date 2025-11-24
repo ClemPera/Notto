@@ -6,17 +6,19 @@ use tauri_plugin_log::log::debug;
 
 use crate::{crypt::{self, NoteData}, db::schema::{Note, User}};
 
-
+//TODO: refactor this, data encryption and stuff should not be inside db?
 pub fn create_note(conn: &Connection, id_user: u32, title: String, mek: Key<Aes256Gcm>) -> Result<(), Box<dyn std::error::Error>> {
-    let (content, nonce) = crypt::encrypt_note("blablalbla".to_string(), mek).unwrap(); //Content empty because it's first note
+    let (content, nonce) = crypt::encrypt_note("".to_string(), mek).unwrap(); //Content empty because it's first note
 
     let note = Note {
         id: None,
+        id_server: None,
         id_user: Some(id_user),
         content,
         nonce,
         title,
-        updated_at: Local::now().naive_utc()
+        updated_at: Local::now().naive_utc(),
+        synched: false
     };
 
     note.insert(conn,).unwrap();
@@ -25,7 +27,7 @@ pub fn create_note(conn: &Connection, id_user: u32, title: String, mek: Key<Aes2
 }
 
 pub fn get_note(conn: &Connection, id: u32, mek: Key<Aes256Gcm>) -> Result<NoteData, Box<dyn std::error::Error>> {
-    let note = Note::select(conn, id).unwrap();
+    let note = Note::select(conn, id).unwrap().unwrap();
 
     let decrypted_note = crypt::decrypt_note(note, mek).unwrap();
 
@@ -43,15 +45,12 @@ pub fn get_notes(conn: &Connection, id_user: u32) -> Result<Vec<Note>, Box<dyn s
 pub fn update_note(conn: &Connection, note_data: NoteData, mek: Key<Aes256Gcm>) -> Result<(), Box<dyn std::error::Error>> {
     let (content, nonce) = crypt::encrypt_note(note_data.content, mek).unwrap();
     
-    let note = Note {
-        id: Some(note_data.id),
-        username: None,
-        title: note_data.title,
-        content,
-        nonce,
-        updated_at: note_data.updated_at,
-    };
-    
+    let mut note = Note::select(conn, note_data.id).unwrap().unwrap();
+
+    note.content = content;
+    note.nonce = nonce;
+    note.updated_at = note_data.updated_at;
+
     note.update(conn).unwrap();
     
     Ok(())
@@ -69,7 +68,8 @@ pub fn create_user(conn: &Connection, username: String) -> Result<User, Box<dyn 
         salt_recovery_data: user_encryption_data.salt_recovery_data.to_string(),
         mek_recovery_nonce: user_encryption_data.mek_recovery_nonce,
         encrypted_mek_recovery: user_encryption_data.encrypted_mek_recovery,
-        token: None
+        token: None,
+        instance: None
     };
 
     user.insert(&conn).unwrap();
