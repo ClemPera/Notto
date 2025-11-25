@@ -2,7 +2,7 @@ use aes_gcm::{Aes256Gcm, Key};
 use chrono::{DateTime, Local, NaiveDateTime};
 use rusqlite::Connection;
 use serde::Serialize;
-use tauri_plugin_log::log::debug;
+use tauri_plugin_log::log::{debug, trace};
 
 use crate::{crypt::{self, NoteData}, db::schema::{Note, User}};
 
@@ -17,7 +17,7 @@ pub fn create_note(conn: &Connection, id_user: u32, title: String, mek: Key<Aes2
         content,
         nonce,
         title,
-        updated_at: Local::now().naive_utc(),
+        updated_at: Local::now().to_utc().timestamp(),
         synched: false
     };
 
@@ -31,7 +31,7 @@ pub fn get_note(conn: &Connection, id: u32, mek: Key<Aes256Gcm>) -> Result<NoteD
 
     let decrypted_note = crypt::decrypt_note(note, mek).unwrap();
 
-    debug!("decrypted note is: {decrypted_note:?}");
+    debug!("note decrypted");
 
     Ok(decrypted_note)
 }
@@ -47,19 +47,20 @@ pub fn update_note(conn: &Connection, note_data: NoteData, mek: Key<Aes256Gcm>) 
     
     let mut note = Note::select(conn, note_data.id).unwrap().unwrap();
 
+    note.title = note_data.title;
     note.content = content;
     note.nonce = nonce;
-    note.updated_at = note_data.updated_at;
-
+    note.updated_at = Local::now().to_utc().timestamp();
+    note.synched = false;
+    
     note.update(conn).unwrap();
     
+    trace!("note updated");
     Ok(())
 }
 
 pub fn create_user(conn: &Connection, username: String) -> Result<User, Box<dyn std::error::Error>> {
     let user_encryption_data = crypt::create_user();
-
-    debug!("{user_encryption_data:?}");
 
     let user = User {
         id: None,

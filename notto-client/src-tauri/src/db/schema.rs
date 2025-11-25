@@ -15,7 +15,7 @@ pub struct Note {
     pub title: String,
     pub content: Vec<u8>, //Serialized encrypted content.
     pub nonce: Vec<u8>, //Nonce used to decrypt data.
-    pub updated_at: NaiveDateTime,
+    pub updated_at: i64,
     pub synched: bool //true: note has already been sent with server
 }
 
@@ -58,7 +58,7 @@ impl Note {
                 title TEXT,
                 content BLOB,
                 nonce BLOB,
-                updated_at DATETIME,
+                updated_at INTEGER,
                 synched INTEGER NOT NULL
             )", 
             (), // empty list of parameters.
@@ -136,7 +136,7 @@ impl Note {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct User {
     pub id: Option<u32>,
     pub username: String,
@@ -161,7 +161,7 @@ impl User {
                 salt_recovery_data TEXT,
                 mek_recovery_nonce BLOB,
                 encrypted_mek_recovery BLOB,
-                token TEXT
+                token TEXT,
                 instance TEXT
             )", 
             (), // empty list of parameters.

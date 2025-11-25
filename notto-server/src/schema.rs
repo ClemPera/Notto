@@ -13,7 +13,7 @@ pub struct Note {
     pub title: String,
     pub content: Vec<u8>,
     pub nonce: Vec<u8>,
-    pub updated_at: NaiveDateTime,
+    pub updated_at: i64,
 }
 
 impl FromRow for Note {
@@ -93,12 +93,13 @@ impl Note {
     pub async fn update(&self, conn: &mut Conn) {
         conn.exec_drop(
             "UPDATE note 
-            SET (title = :title, content = :content, nonce = :nonce) 
+            SET title = :title, content = :content, nonce = :nonce, updated_at = :updated_at 
             WHERE id = :id",
             params!(
                 "title" => &self.title,
                 "content" => &self.content,
                 "nonce" => &self.nonce,
+                "updated_at" => &self.updated_at,
                 "id" => &self.id
             ),
         )
@@ -106,12 +107,12 @@ impl Note {
         .unwrap();
     }
 
-    pub async fn select_all_from_user(conn: &mut Conn, id_user: u32, after_datetime: NaiveDateTime) -> Vec<Self> {
+    pub async fn select_all_from_user(conn: &mut Conn, id_user: u32, after_datetime: i64) -> Vec<Self> {
         conn.exec(
-            "SELECT * FROM note WHERE id_user = :id_user AND updated_on >= :updated_on",
+            "SELECT * FROM note WHERE id_user = :id_user AND updated_at >= :updated_at",
             params!(
                 "id_user" => id_user,
-                "updated_on" => after_datetime
+                "updated_at" => after_datetime
             ),
         )
         .await
@@ -182,7 +183,7 @@ impl From<shared::User> for User {
 impl User {
     //TODO: pub async fn create(&self, conn: &mut Conn) {}
 
-    pub async fn select(conn: &mut Conn, username: String) -> Self {
+    pub async fn select(conn: &mut Conn, username: String) -> Option<Self> {
         conn.exec_first(
             "SELECT * FROM user WHERE username = :username",
             params!(
@@ -190,7 +191,6 @@ impl User {
             ),
         )
         .await
-        .unwrap()
         .unwrap()
     }
 
@@ -250,15 +250,14 @@ impl UserToken {
         .unwrap();
     }
 
-    pub async fn select(conn: &mut Conn, id: u32) -> Self {
-        conn.exec_first(
+    pub async fn select(conn: &mut Conn, id: u32) -> Vec<Self> {
+        conn.exec(
             "SELECT * FROM user_token WHERE id_user = :id_user",
             params!(
                 "id_user" => id
             ),
         )
         .await
-        .unwrap()
         .unwrap()
     }
 }

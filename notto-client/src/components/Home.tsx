@@ -6,14 +6,14 @@ import Sync from "./Sync";
 type Note = {
   id: number
   title: string,
-  created_at: Date,
+  updated_at: Date,
 }
 
 type NoteContent = {
   id: number
   title: string,
   content: string,
-  created_at: Date,
+  updated_at: Date,
 }
 
 export default function Home() {
@@ -43,20 +43,20 @@ export default function Home() {
     const note: NoteContent = {
       id: currentNote?.id!,
       title: currentNote?.title!,
-      created_at: currentNote?.created_at!,
+      updated_at: currentNote?.updated_at!,
       content: content,
     }
     
     setCurrentNote(note);
 
-    await invoke("edit_note", { note }).catch((e) => console.error(e));
+    invoke("edit_note", { note }).catch((e) => console.error(e));
   }
 
   async function edit_note_title(title: string) {
     const note: NoteContent = {
       id: currentNote?.id!,
       title: title!,
-      created_at: currentNote?.created_at!,
+      updated_at: currentNote?.updated_at!,
       content: currentNote?.content!,
     }
     
@@ -78,7 +78,7 @@ export default function Home() {
             <div key={note.id}
               className="bg-amber-600 p-2 cursor-pointer"
               onClick={() => get_note(note.id)}>
-                {note.title}, {note.created_at.toString()}
+                {note.title}, {note.updated_at.toString()}
             </div>
           ))}
         </div>

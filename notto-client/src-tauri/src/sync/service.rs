@@ -13,25 +13,27 @@ use crate::{AppState, db::{self, schema::Note}, sync};
 
 pub async fn run(handle: AppHandle) {
     let state = handle.state::<Mutex<AppState>>();
-    let mut last_sync = DateTime::<Utc>::MIN_UTC.naive_utc();
+    let mut last_sync = DateTime::<Utc>::MIN_UTC.timestamp();
 
     loop{
-        trace!("Hello, I'm a background service! Here's the current user_id: {:?}", state.lock().await.id_user);
+        trace!("Hello, I'm a background service!");
         
         {
             let state = state.lock().await;
 
-            if state.id_user.is_some() && state.token.is_some() && state.instance.is_some() {
-                //Update sync infos
-                let sync = Local::now().naive_utc();
-
-                //Sync
-                receive_latest_notes(&state, last_sync).await;
-                send_latest_notes(&state).await;
-
-                last_sync = sync;
-            }else {
-                debug!("Conditions are not respected to sync: {state:?}");
+            if let Some(user) = state.user.clone() {
+                if user.id.is_some() && user.token.is_some() && user.instance.is_some() {
+                    //Update sync infos
+                    let sync = Local::now().to_utc().timestamp();
+    
+                    //Sync
+                    receive_latest_notes(&state, last_sync).await;
+                    send_latest_notes(&state).await;
+    
+                    last_sync = sync;
+                }else {
+                    debug!("Conditions are not respected to sync");
+                }
             }
         }
 
@@ -40,17 +42,19 @@ pub async fn run(handle: AppHandle) {
 }
 
 
-pub async fn receive_latest_notes(state: &MutexGuard<'_, AppState>, last_sync: NaiveDateTime) {
+pub async fn receive_latest_notes(state: &MutexGuard<'_, AppState>, last_sync: i64) {
     let conn = state.database.lock().await;
+    
+    let user = state.user.clone().unwrap();
 
     let params = SelectNoteParams {
-        id_user: state.id_user.clone().unwrap(),
-        token: state.token.clone().unwrap(), 
+        username: user.username,
+        token: hex::encode(user.token.unwrap()), 
         updated_at: last_sync
     };
     
     //Ask server for modified notes
-    let notes = sync::operations::select_notes(params, state.instance.clone().unwrap()).unwrap();
+    let notes = sync::operations::select_notes(params, user.instance.unwrap()).await.unwrap();
 
     // Put new notes to database
     notes.into_iter().for_each(|note| {
@@ -78,21 +82,23 @@ pub async fn receive_latest_notes(state: &MutexGuard<'_, AppState>, last_sync: N
 
 pub async fn send_latest_notes(state: &MutexGuard<'_, AppState>) {
     let conn = state.database.lock().await;
+
+    let user = state.user.clone().unwrap();
     
     //Fetch db find all notes with synched = false;
-    let notes = Note::select_all(&conn, state.id_user.clone().unwrap()).unwrap();
+    let notes = Note::select_all(&conn, user.id.unwrap()).unwrap();
 
     //TODO: Optimise that with a database query
     let notes: Vec<Note> = notes.into_iter().filter(|note| !note.synched).collect();
 
     let sent_notes = SentNotes {
-        id_user: state.id_user.clone().unwrap(),
+        username: user.username,
         notes: notes.into_iter().map(|n| n.into()).collect(),
-        token: state.token.clone().unwrap()
+        token: user.token.unwrap()
     };
 
     //Send server these notes
-    let results = sync::operations::send_notes(sent_notes, state.instance.clone().unwrap()).unwrap();
+    let results = sync::operations::send_notes(sent_notes, user.instance.unwrap()).await.unwrap();
 
     //Handle Results
     results.into_iter().for_each(|result| {

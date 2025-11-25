@@ -18,7 +18,7 @@ pub struct NoteData {
     pub id: u32,
     pub title: String,
     pub content: String,
-    pub updated_at: NaiveDateTime,
+    pub updated_at: i64,
 }
 
 #[derive(Debug)]
@@ -142,10 +142,6 @@ pub fn create_account(password: String, mek: Key<Aes256Gcm>) -> AccountEncryptio
         .to_string();
 
 
-    trace!("salt_auth: {salt_auth:?}");
-    trace!("password_hash_auth: {password_hash_auth:?}");
-    trace!("salt_server_auth: {salt_server_auth:?}");
-
     AccountEncryptionData {
         recovery_key_auth,
         salt_auth,
@@ -169,10 +165,6 @@ pub fn login(login_request: LoginRequest, password: String) -> String {
     let password_hash_auth = argon2.hash_password(password.as_bytes(), &salt_auth)
         .unwrap()
         .to_string();
-
-    trace!("salt_auth: {salt_auth:?}");
-    trace!("password_hash_auth: {password_hash_auth:?}");
-    trace!("salt_server_auth: {salt_server_auth:?}");
 
     argon2.hash_password(password_hash_auth.as_bytes(), &salt_server_auth)
         .unwrap()

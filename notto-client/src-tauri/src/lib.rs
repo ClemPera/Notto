@@ -20,10 +20,7 @@ mod sync;
 #[derive(Debug)]
 pub struct AppState {
   database: Mutex<Connection>,
-  master_encryption_key: Option<Key<Aes256Gcm>>,
-  id_user: Option<u32>,
-  token: Option<Vec<u8>>,
-  instance: Option<String>
+  user: Option<db::schema::User>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -40,10 +37,7 @@ pub fn run() {
 
             let app_state = Mutex::new(AppState{ 
                 database: db::init(db_path).unwrap(),
-                master_encryption_key: None,
-                id_user: None,
-                token: None,
-                instance: None
+                user: None
             });
 
             let app_handle_clone = app.app_handle().clone();

@@ -11,6 +11,8 @@ use mysql_async::{Conn, Pool};
 use rand_core::{OsRng, TryRngCore};
 use shared::SentNotesResult;
 
+use crate::schema::User;
+
 mod schema;
 
 #[tokio::main]
@@ -37,21 +39,28 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn user_verify(conn: &mut Conn , id: u32, token: Vec<u8>) -> Result<(), StatusCode> {
-    let user_token = schema::UserToken::select(conn, id).await;
+async fn user_verify(conn: &mut Conn , username: String, token: Vec<u8>) -> Result<(), StatusCode> {
+    let user = match schema::User::select(conn, username).await {
+        Some(u) => u,
+        None => return Err(StatusCode::UNPROCESSABLE_ENTITY)
+    };
 
-    if user_token.token == token {
-        Ok(())
-    }else{
-        Err(StatusCode::FORBIDDEN)
+    let user_tokens = schema::UserToken::select(conn, user.id.unwrap()).await;
+    
+    for ut in user_tokens {
+        if ut.token == token{
+            return Ok(());
+        } 
     }
+
+    Err(StatusCode::FORBIDDEN)
 }
 
 async fn send_note(State(pool): State<Pool>, Json(sent_notes): Json<shared::SentNotes>) -> Result<Json<Vec<SentNotesResult>>, StatusCode> {
     let notes: Vec<schema::Note> = sent_notes.notes.into_iter().map(|n| n.into()).collect();
     let mut conn = pool.get_conn().await.unwrap();
 
-    user_verify(&mut conn, sent_notes.id_user, sent_notes.token).await?;
+    user_verify(&mut conn, sent_notes.username, sent_notes.token).await?;
 
     let mut result: Vec<SentNotesResult> = vec![];
     
@@ -64,8 +73,7 @@ async fn send_note(State(pool): State<Pool>, Json(sent_notes): Json<shared::Sent
                 }else{
                     note.update(&mut conn).await;
 
-                    let note_id = conn.last_insert_id().unwrap();
-                    result.push(SentNotesResult { id_client: note.id_client, id_server: note_id, status: shared::NoteStatus::Ok });
+                    result.push(SentNotesResult { id_client: note.id_client, id_server: note.id.unwrap(), status: shared::NoteStatus::Ok });
                 }
             },
             None => {
@@ -85,9 +93,11 @@ async fn select_notes(
     Query(params): Query<shared::SelectNoteParams>,
 ) -> Result<Json<Vec<shared::Note>>, StatusCode> {
     let mut conn = pool.get_conn().await.unwrap();
-    user_verify(&mut conn, params.id_user, params.token).await?;
+    user_verify(&mut conn, params.username.clone(), hex::decode(params.token).unwrap()).await?;
 
-    let notes = schema::Note::select_all_from_user(&mut conn, params.id_user, params.updated_at).await;
+    let user = User::select(&mut conn, params.username).await.unwrap();
+
+    let notes = schema::Note::select_all_from_user(&mut conn, user.id.unwrap(), params.updated_at).await;
 
     let notes = notes.into_iter().map(|note| note.into()).collect();
 
@@ -107,15 +117,16 @@ async fn insert_user(State(pool): State<Pool>, Json(user): Json<shared::User>) {
 async fn login_request(
     State(pool): State<Pool>,
     Query(params): Query<shared::LoginRequestParams>,
-) -> Json<shared::LoginRequest> {
+) -> Result<Json<shared::LoginRequest>, StatusCode> {
     let mut conn = pool.get_conn().await.unwrap();
 
-    let user = schema::User::select(&mut conn, params.username).await;
-    
-    Json(shared::LoginRequest {
-        salt_auth: user.salt_auth,
-        salt_server_auth: user.salt_server_auth,
-    })
+    match schema::User::select(&mut conn, params.username).await {
+        Some(user) => return Ok(Json(shared::LoginRequest {
+                salt_auth: user.salt_auth,
+                salt_server_auth: user.salt_server_auth,
+            })),
+        None => return Err(StatusCode::NOT_FOUND)
+    };
 }
 
 #[axum::debug_handler]
@@ -126,7 +137,7 @@ async fn login(
     let mut conn = pool.get_conn().await.unwrap();
 
     //Check if login_hash is correct
-    let user = schema::User::select(&mut conn, params.username).await;
+    let user = schema::User::select(&mut conn, params.username).await.ok_or(StatusCode::NOT_FOUND)?;
 
     if params.login_hash != user.stored_password_hash {
         return Err(StatusCode::UNAUTHORIZED);

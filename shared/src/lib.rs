@@ -27,21 +27,21 @@ pub struct Note {
     pub title: String,
     pub content: Vec<u8>,
     pub nonce: Vec<u8>,
-    pub updated_at: NaiveDateTime,
+    pub updated_at: i64,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct SelectNoteParams {
-    pub id_user: u32,
-    pub token: Vec<u8>,
-    pub updated_at: NaiveDateTime
+    pub username: String,
+    pub token: String,
+    pub updated_at: i64
 }
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct SentNotes {
     pub notes: Vec<Note>,
     pub token: Vec<u8>,
-    pub id_user: u32,
+    pub username: String,
 }
 
 #[derive(Deserialize, Serialize, Debug)]

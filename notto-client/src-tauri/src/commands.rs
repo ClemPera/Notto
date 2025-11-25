@@ -1,6 +1,5 @@
 use tokio::sync::Mutex;
 
-use chrono::NaiveDateTime;
 use serde::Serialize;
 use tauri::State;
 use tauri_plugin_log::log::{debug, trace};
@@ -43,7 +42,7 @@ impl From<User> for FilteredUser {
 pub struct NoteMetadata {
     pub id: u32,
     pub title: String,
-    pub updated_at: NaiveDateTime,
+    pub updated_at: i64,
 }
 
 impl From<Note> for NoteMetadata {
@@ -72,8 +71,10 @@ pub async fn create_note(state: State<'_, Mutex<AppState>>, title: String) -> Re
     let state = state.lock().await;
 
     let conn = state.database.lock().await;
-    
-    db::operations::create_note(&conn, state.id_user.unwrap(), title, state.master_encryption_key.unwrap()).unwrap();
+
+    let user = state.user.clone().unwrap();
+
+    db::operations::create_note(&conn, user.id.unwrap(), title, user.master_encryption_key).unwrap();
 
     Ok(())
 }
@@ -84,7 +85,7 @@ pub async fn get_note(state: State<'_, Mutex<AppState>>, id: u32) -> Result<Note
 
     let conn = state.database.lock().await;
     
-    let note = db::operations::get_note(&conn, id, state.master_encryption_key.unwrap()).unwrap();
+    let note = db::operations::get_note(&conn, id, state.user.clone().unwrap().master_encryption_key).unwrap();
 
     Ok(note)
 }
@@ -95,7 +96,7 @@ pub async fn edit_note(state: State<'_, Mutex<AppState>>, note: NoteData) -> Res
 
     let conn = state.database.lock().await;
 
-    db::operations::update_note(&conn, note, state.master_encryption_key.unwrap()).unwrap();
+    db::operations::update_note(&conn, note, state.user.clone().unwrap().master_encryption_key).unwrap();
 
     Ok(())
 }
@@ -122,8 +123,7 @@ pub async fn create_user(state: State<'_, Mutex<AppState>>, username: String) ->
         db::operations::create_user(&conn, username).unwrap()
     };
 
-    state.master_encryption_key = Some(user.master_encryption_key);
-    state.id_user = user.id;
+    state.user = Some(user);
 
     debug!("user created");
     
@@ -147,8 +147,6 @@ pub async fn get_users(state: State<'_, Mutex<AppState>>) -> Result<Vec<Filtered
 pub async fn test(state: State<'_, Mutex<AppState>>) -> Result<(), CommandError> {
     let state = state.lock().await;
     
-    debug!("mek is: {:?}", state.master_encryption_key);
-
     Ok(())
 }
 
@@ -164,10 +162,7 @@ pub async fn set_user(state: State<'_, Mutex<AppState>>, username: String) -> Re
         }
     };
 
-    state.master_encryption_key = Some(user.master_encryption_key);
-    state.id_user = Some(user.id.unwrap());
-    state.token = user.token;
-    state.instance = user.instance;
+    state.user = Some(user);
 
     Ok(())
 }
@@ -180,10 +175,10 @@ pub async fn sync_create_account(state: State<'_, Mutex<AppState>>, username: St
     
     let conn = state.database.lock().await;
     let user = db::operations::get_user(&conn, username).unwrap().unwrap();
-    let account = crypt::create_account(password, state.master_encryption_key.unwrap());
+    let account = crypt::create_account(password, state.user.clone().unwrap().master_encryption_key);
     
     trace!("create account: start creating");
-    sync::create_account(&conn, user, account, instance);
+    sync::create_account(user, account, instance).await;
     
     debug!("account has been created");
 
@@ -194,14 +189,17 @@ pub async fn sync_create_account(state: State<'_, Mutex<AppState>>, username: St
 
 #[tauri::command(rename_all = "snake_case")]
 pub async fn sync_login(state: State<'_, Mutex<AppState>>, username: String, password: String, instance: Option<String>) -> Result<(), CommandError> {
-    trace!("create account command received");
+    trace!("login command received");
 
     let mut state = state.lock().await;
 
-    let login_data = {
-        let conn = state.database.lock().await;
-        sync::login(&conn, username.clone(), password.clone(), instance.clone())
+    let instance = match instance {
+        Some(i) => i,
+        None => "http://localhost:3000".to_string()
     };
+
+    let login_data = sync::login(username.clone(), password.clone(), instance.clone()).await;
+
     debug!("account has been logged in");
 
     let mut user = {
@@ -212,21 +210,29 @@ pub async fn sync_login(state: State<'_, Mutex<AppState>>, username: String, pas
         }
     };
 
+    trace!("get user = ok");
+
     //TODO: if !user.has_mek() then do not decrypt mek?
     //TODO: handle if user account not created locally?
 
     let mek = crypt::decrypt_mek(password, login_data.encrypted_mek_password, login_data.salt_data, login_data.mek_password_nonce);
-    state.master_encryption_key = Some(mek);
-    state.token = Some(login_data.token.clone());
-    state.instance = instance;
 
+    trace!("mek encrypted");
+    
     user.master_encryption_key = mek;
-    user.token = Some(login_data.token);
+    user.token = Some(login_data.token.clone());
+    user.instance = Some(instance.clone());
+
+    state.user = Some(user.clone());
+
+    trace!("state modified");
 
     {
         let conn = state.database.lock().await;
         db::operations::update_user(&conn, user);
     }
+
+    trace!("user modified");
 
     Ok(())
 }
