@@ -188,7 +188,7 @@ pub async fn sync_create_account(state: State<'_, Mutex<AppState>>, username: St
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub async fn sync_login(state: State<'_, Mutex<AppState>>, username: String, password: String, instance: Option<String>) -> Result<(), CommandError> {
+pub async fn sync_login(state: State<'_, Mutex<AppState>>, username: String, password: String, instance: Option<String>) -> Result<bool, CommandError> {
     trace!("login command received");
 
     let mut state = state.lock().await;
@@ -234,5 +234,5 @@ pub async fn sync_login(state: State<'_, Mutex<AppState>>, username: String, pas
 
     trace!("user modified");
 
-    Ok(())
+    Ok(true)
 }

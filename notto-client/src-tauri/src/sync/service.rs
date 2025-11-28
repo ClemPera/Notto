@@ -32,7 +32,7 @@ pub async fn run(handle: AppHandle) {
     
                     last_sync = sync;
                 }else {
-                    debug!("Conditions are not respected to sync");
+                    debug!("Conditions are not respected to sync {state:?}");
                 }
             }
         }
@@ -56,9 +56,12 @@ pub async fn receive_latest_notes(state: &MutexGuard<'_, AppState>, last_sync: i
     //Ask server for modified notes
     let notes = sync::operations::select_notes(params, user.instance.unwrap()).await.unwrap();
 
+    trace!("notes received : {notes:?}");
+
     // Put new notes to database
     notes.into_iter().for_each(|note| {
-        let note = db::schema::Note::from(note);
+        let mut note = db::schema::Note::from(note);
+        note.id_user = user.id;
         
         //Check if exist
         let selected_note = db::schema::Note::select(&conn, note.id.unwrap()).unwrap();

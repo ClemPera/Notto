@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 pub struct Note {
     pub id: Option<u64>,
     pub id_client: u32, //id of the note on client
-    pub id_user: u32, 
+    pub id_user: Option<u32>, //Server id user
     pub title: String,
     pub content: Vec<u8>,
     pub nonce: Vec<u8>,
@@ -35,7 +35,7 @@ impl From<shared::Note> for Note {
         Note {
             id: note.id_server,
             id_client: note.id,
-            id_user: note.id_user,
+            id_user: None,
             title: note.title,
             content: note.content,
             nonce: note.nonce,
@@ -49,7 +49,6 @@ impl Into<shared::Note> for Note {
         shared::Note {
             id: self.id_client,
             id_server: self.id,
-            id_user: self.id_user,
             content: self.content,
             nonce: self.nonce,
             title: self.title,

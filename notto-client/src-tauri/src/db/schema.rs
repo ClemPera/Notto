@@ -24,7 +24,7 @@ impl From<shared::Note> for Note {
         Note {
             id: Some(note.id),
             id_server: note.id_server,
-            id_user: Some(note.id_user),
+            id_user: None,
             title: note.title,
             content: note.content,
             nonce: note.nonce,
@@ -39,7 +39,6 @@ impl Into<shared::Note> for Note {
         shared::Note {
             id: self.id.unwrap(),
             id_server: self.id_server,
-            id_user: self.id_user.unwrap(),
             title: self.title,
             content: self.content,
             nonce: self.nonce,

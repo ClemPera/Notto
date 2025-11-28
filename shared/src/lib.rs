@@ -23,7 +23,6 @@ pub struct User {
 pub struct Note {
     pub id: u32,
     pub id_server: Option<u64>,
-    pub id_user: u32,
     pub title: String,
     pub content: Vec<u8>,
     pub nonce: Vec<u8>,

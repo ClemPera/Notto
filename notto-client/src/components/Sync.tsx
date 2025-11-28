@@ -21,6 +21,11 @@ export default function Sync() {
 
   async function login() {
     await invoke("sync_login", { username: "test_account", password: "password" })
+      .then((loggedStatus) => {
+        setLogged(() => loggedStatus as boolean);
+        console.log("user has been logged: ", loggedStatus as boolean);
+        console.log("logged: ", logged)
+      })
       .catch((e) => console.error(e));
   }
   
