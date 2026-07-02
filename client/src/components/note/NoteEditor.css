@@ -118,9 +118,10 @@
   margin: 1.25rem 0;
 }
 
+/* !important overrides the resize handle's inline px height so shrinking the pane rescales proportionally instead of stretching */
 .note-editor .ProseMirror [data-resize-wrapper] img {
   max-width: 100%;
-  height: auto;
+  height: auto !important;
   border-radius: 8px;
   border: 1px solid #334155;
   display: block;
