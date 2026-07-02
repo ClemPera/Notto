@@ -1,8 +1,26 @@
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
+import Image from "@tiptap/extension-image";
+import type { EditorView } from "@tiptap/pm/view";
 import { useEffect, useRef } from "react";
+import { prepareImageForInsert, ImageInputError } from "../../lib/image";
+import { useToasts } from "../../store/toasts";
 import "./NoteEditor.css";
+
+/** Inserts `file` as an image node at `pos` by dispatching directly on the view (used by
+ * paste/drop handlers, which only have access to the view, not the editor instance). */
+async function insertImageAtPos(view: EditorView, file: File, pos: number) {
+  try {
+    const src = await prepareImageForInsert(file);
+    if (view.isDestroyed) return;
+    const node = view.state.schema.nodes.image.create({ src, alt: file.name });
+    view.dispatch(view.state.tr.insert(pos, node));
+  } catch (err) {
+    const message = err instanceof ImageInputError ? err.message : "Failed to insert image.";
+    useToasts.getState().addToast({ kind: "invalid_input", message });
+  }
+}
 
 type Props = {
   noteId: string;
@@ -49,8 +67,10 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
   const isMountedRef = useRef(false);
   const lastContentRef = useRef(content);
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const editor = useEditor({
-    extensions: [StarterKit, Markdown],
+    extensions: [StarterKit, Markdown, Image.configure({ inline: false, allowBase64: true })],
     content,
     contentType: "markdown",
     editable: !disabled,
@@ -65,7 +85,48 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
         onChange(markdown);
       }, 400);
     },
+    editorProps: {
+      handlePaste: (view, event) => {
+        if (!view.editable) return false;
+        const file = Array.from(event.clipboardData?.items ?? [])
+          .find((item) => item.type.startsWith("image/"))
+          ?.getAsFile();
+        if (!file) return false;
+
+        event.preventDefault();
+        insertImageAtPos(view, file, view.state.selection.from);
+        return true;
+      },
+      handleDrop: (view, event) => {
+        if (!view.editable) return false;
+        const file = Array.from(event.dataTransfer?.files ?? []).find((f) =>
+          f.type.startsWith("image/")
+        );
+        if (!file) return false;
+
+        event.preventDefault();
+        const pos = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos;
+        insertImageAtPos(view, file, pos ?? view.state.selection.from);
+        return true;
+      },
+    },
   });
+
+  const handleInsertImageClick = () => fileInputRef.current?.click();
+
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !editor) return;
+
+    try {
+      const src = await prepareImageForInsert(file);
+      editor.chain().focus().setImage({ src, alt: file.name }).run();
+    } catch (err) {
+      const message = err instanceof ImageInputError ? err.message : "Failed to insert image.";
+      useToasts.getState().addToast({ kind: "invalid_input", message });
+    }
+  };
 
   // Reset content when switching to a different note, skip on initial mount
   useEffect(() => {
@@ -216,6 +277,23 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
           </svg>
         </ToolbarButton>
+
+        <Divider />
+
+        <ToolbarButton onClick={handleInsertImageClick} disabled={isDisabled} title="Insert image">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <rect x="3" y="3" width="18" height="18" rx="2" strokeWidth={2} />
+            <circle cx="8.5" cy="8.5" r="1.5" strokeWidth={2} />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 15l-5-5L5 21" />
+          </svg>
+        </ToolbarButton>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          onChange={handleFileSelected}
+          className="hidden"
+        />
 
         <Divider />
 

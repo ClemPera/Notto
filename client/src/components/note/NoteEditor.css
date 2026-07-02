@@ -118,6 +118,20 @@
   margin: 1.25rem 0;
 }
 
+.note-editor .ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  margin-bottom: 0.75rem;
+  display: block;
+}
+
+.note-editor .ProseMirror img.ProseMirror-selectednode {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
+}
+
 .note-editor .ProseMirror p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   float: left;
