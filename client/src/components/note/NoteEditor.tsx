@@ -1,10 +1,10 @@
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
-import Image from "@tiptap/extension-image";
 import type { EditorView } from "@tiptap/pm/view";
 import { useEffect, useRef } from "react";
 import { prepareImageForInsert, ImageInputError } from "../../lib/image";
+import { ResizableImage } from "../../lib/resizableImage";
 import { useToasts } from "../../store/toasts";
 import "./NoteEditor.css";
 
@@ -70,7 +70,15 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const editor = useEditor({
-    extensions: [StarterKit, Markdown, Image.configure({ inline: false, allowBase64: true })],
+    extensions: [
+      StarterKit,
+      Markdown,
+      ResizableImage.configure({
+        inline: false,
+        allowBase64: true,
+        resize: { enabled: true, alwaysPreserveAspectRatio: true, minWidth: 60, minHeight: 60 },
+      }),
+    ],
     content,
     contentType: "markdown",
     editable: !disabled,

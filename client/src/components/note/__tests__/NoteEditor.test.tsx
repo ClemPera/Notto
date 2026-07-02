@@ -102,4 +102,21 @@ describe("NoteEditor image insertion", () => {
     render(<NoteEditor noteId="note-3" content="" onChange={vi.fn()} disabled={true} />);
     expect(screen.getByTitle("Insert image")).toBeDisabled();
   });
+
+  it("renders resize handles on an inserted image", async () => {
+    // @ts-expect-error test double for HTMLImageElement
+    globalThis.Image = SmallFakeImage;
+    const user = userEvent.setup();
+
+    const { container } = render(
+      <NoteEditor noteId="note-4" content="" onChange={vi.fn()} disabled={false} />
+    );
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    await user.upload(fileInput, makeImageFile("photo.png"));
+
+    await waitFor(() => {
+      expect(container.querySelectorAll("[data-resize-handle]").length).toBeGreaterThan(0);
+    });
+  });
 });
