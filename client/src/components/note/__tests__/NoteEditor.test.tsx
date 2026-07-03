@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { invoke } from "@tauri-apps/api/core";
 import NoteEditor from "../NoteEditor";
 
 /** Stand-in for HTMLImageElement: jsdom doesn't decode images, so tests control dimensions directly. */
@@ -118,5 +119,42 @@ describe("NoteEditor image insertion", () => {
     await waitFor(() => {
       expect(container.querySelectorAll("[data-resize-handle]").length).toBeGreaterThan(0);
     });
+  });
+
+  it("reads the file from disk when a drop only carries a file:// path (WebKitGTK)", async () => {
+    // @ts-expect-error test double for HTMLImageElement
+    globalThis.Image = SmallFakeImage;
+    vi.mocked(invoke).mockResolvedValue(Array.from(new Uint8Array([1, 2, 3, 4])));
+    document.elementFromPoint = vi.fn(() => null);
+
+    const { container } = render(
+      <NoteEditor noteId="note-5" content="" onChange={vi.fn()} disabled={false} />
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector(".ProseMirror")).toBeTruthy();
+    });
+    const pm = container.querySelector(".ProseMirror") as HTMLElement;
+
+    const dataTransfer = {
+      files: [],
+      getData: (type: string) =>
+        type === "text/uri-list" ? "file:///home/clement/Downloads/3.png" : "",
+    };
+    const dropEvent = new Event("drop", { bubbles: true, cancelable: true });
+    Object.defineProperty(dropEvent, "dataTransfer", { value: dataTransfer });
+    Object.defineProperty(dropEvent, "clientX", { value: 0 });
+    Object.defineProperty(dropEvent, "clientY", { value: 0 });
+    pm.dispatchEvent(dropEvent);
+
+    await waitFor(() => {
+      expect(container.querySelector(".ProseMirror img")).toBeTruthy();
+    });
+
+    expect(invoke).toHaveBeenCalledWith("read_dropped_image", {
+      path: "/home/clement/Downloads/3.png",
+    });
+    const img = container.querySelector(".ProseMirror img") as HTMLImageElement;
+    expect(img.getAttribute("alt")).toBe("3.png");
   });
 });

@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { isSupportedImageType, prepareImageForInsert, ImageInputError } from "../image";
+import {
+  isSupportedImageType,
+  prepareImageForInsert,
+  ImageInputError,
+  mimeTypeForFilename,
+  fileUriToPath,
+} from "../image";
 
 function makeFile(name: string, type: string, sizeBytes = 100): File {
   return new File([new Uint8Array(sizeBytes)], name, { type });
@@ -35,6 +41,43 @@ describe("isSupportedImageType", () => {
     expect(isSupportedImageType(makeFile("a.pdf", "application/pdf"))).toBe(false);
     expect(isSupportedImageType(makeFile("a.svg", "image/svg+xml"))).toBe(false);
     expect(isSupportedImageType(makeFile("a.txt", ""))).toBe(false);
+  });
+});
+
+describe("mimeTypeForFilename", () => {
+  it("maps known extensions case-insensitively", () => {
+    expect(mimeTypeForFilename("photo.PNG")).toBe("image/png");
+    expect(mimeTypeForFilename("photo.jpg")).toBe("image/jpeg");
+    expect(mimeTypeForFilename("photo.jpeg")).toBe("image/jpeg");
+    expect(mimeTypeForFilename("photo.webp")).toBe("image/webp");
+    expect(mimeTypeForFilename("photo.gif")).toBe("image/gif");
+  });
+
+  it("returns null for unrecognized or missing extensions", () => {
+    expect(mimeTypeForFilename("document.pdf")).toBe(null);
+    expect(mimeTypeForFilename("noextension")).toBe(null);
+  });
+});
+
+describe("fileUriToPath", () => {
+  it("returns null for non-file URIs", () => {
+    expect(fileUriToPath("https://example.com/a.png")).toBe(null);
+  });
+
+  it("decodes a plain unix path", () => {
+    expect(fileUriToPath("file:///home/clement/Downloads/3.png")).toBe(
+      "/home/clement/Downloads/3.png"
+    );
+  });
+
+  it("decodes percent-encoded characters", () => {
+    expect(fileUriToPath("file:///home/clement/My%20Photos/3.png")).toBe(
+      "/home/clement/My Photos/3.png"
+    );
+  });
+
+  it("strips the extra leading slash on Windows drive paths", () => {
+    expect(fileUriToPath("file:///C:/Users/clement/3.png")).toBe("C:/Users/clement/3.png");
   });
 });
 

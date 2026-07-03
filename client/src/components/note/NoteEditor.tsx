@@ -2,10 +2,12 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
 import type { EditorView } from "@tiptap/pm/view";
+import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef } from "react";
-import { prepareImageForInsert, ImageInputError } from "../../lib/image";
+import { prepareImageForInsert, ImageInputError, mimeTypeForFilename, fileUriToPath } from "../../lib/image";
 import { ResizableImage } from "../../lib/resizableImage";
 import { useToasts } from "../../store/toasts";
+import { handleCommandError } from "../../lib/errors";
 import "./NoteEditor.css";
 
 /** Inserts `file` as an image node at `pos` by dispatching directly on the view (used by
@@ -19,6 +21,36 @@ async function insertImageAtPos(view: EditorView, file: File, pos: number) {
   } catch (err) {
     const message = err instanceof ImageInputError ? err.message : "Failed to insert image.";
     useToasts.getState().addToast({ kind: "invalid_input", message });
+  }
+}
+
+/** Same as insertImageAtPos, but for OS file drops where WebKitGTK gives us only a
+ * `file://` path in dataTransfer, not a File — the bytes are read via a Tauri command. */
+async function insertImageFromPathAtPos(view: EditorView, path: string, pos: number) {
+  const mimeType = mimeTypeForFilename(path);
+  if (!mimeType) {
+    useToasts.getState().addToast({
+      kind: "invalid_input",
+      message: "Unsupported image format. Use PNG, JPEG, WebP or GIF.",
+    });
+    return;
+  }
+
+  try {
+    const bytes = await invoke<number[]>("read_dropped_image", { path });
+    if (view.isDestroyed) return;
+    const name = path.split(/[/\\]/).pop() ?? "image";
+    const file = new File([new Uint8Array(bytes)], name, { type: mimeType });
+    const src = await prepareImageForInsert(file);
+    if (view.isDestroyed) return;
+    const node = view.state.schema.nodes.image.create({ src, alt: name });
+    view.dispatch(view.state.tr.insert(pos, node));
+  } catch (err) {
+    if (err instanceof ImageInputError) {
+      useToasts.getState().addToast({ kind: "invalid_input", message: err.message });
+    } else {
+      handleCommandError(err);
+    }
   }
 }
 
@@ -107,14 +139,27 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
       },
       handleDrop: (view, event) => {
         if (!view.editable) return false;
+        const pos =
+          view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos ??
+          view.state.selection.from;
+
         const file = Array.from(event.dataTransfer?.files ?? []).find((f) =>
           f.type.startsWith("image/")
         );
-        if (!file) return false;
+        if (file) {
+          event.preventDefault();
+          insertImageAtPos(view, file, pos);
+          return true;
+        }
+
+        // WebKitGTK doesn't populate dataTransfer.files for OS drops, only a URI list.
+        const uriList =
+          event.dataTransfer?.getData("text/uri-list") || event.dataTransfer?.getData("text/plain");
+        const path = uriList ? fileUriToPath(uriList.split("\n")[0]?.trim() ?? "") : null;
+        if (!path) return false;
 
         event.preventDefault();
-        const pos = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos;
-        insertImageAtPos(view, file, pos ?? view.state.selection.from);
+        insertImageFromPathAtPos(view, path, pos);
         return true;
       },
     },

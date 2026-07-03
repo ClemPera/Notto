@@ -698,6 +698,31 @@ pub async fn handle_conflict(
     Ok(())
 }
 
+const MAX_DROPPED_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
+
+/// Reads and size-checks a local image file. Kept separate from the command wrapper so it's testable without a Tauri runtime.
+fn read_image_file(path: &str) -> Result<Vec<u8>, CommandError> {
+    let metadata = std::fs::metadata(path)
+        .map_err(|e| CommandError::invalid_input(format!("Cannot read '{path}': {e}")))?;
+
+    if !metadata.is_file() {
+        return Err(CommandError::invalid_input(format!("'{path}' is not a file")));
+    }
+    if metadata.len() > MAX_DROPPED_IMAGE_BYTES {
+        return Err(CommandError::invalid_input("Image is too large (max 20 MB)"));
+    }
+
+    std::fs::read(path).map_err(|e| CommandError::invalid_input(format!("Cannot read '{path}': {e}")))
+}
+
+/// Reads a dropped image's raw bytes from disk. WebKitGTK doesn't expose OS file drops
+/// through the browser's File API, only a `file://` path, so the frontend resolves that
+/// path and reads the bytes through this command instead.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn read_dropped_image(path: String) -> Result<Vec<u8>, CommandError> {
+    read_image_file(&path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -722,6 +747,46 @@ mod tests {
             last_sync_at: 0,
             latest_note_id: None,
         }
+    }
+
+    fn unique_temp_path(name: &str) -> std::path::PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("nooto-test-{nanos}-{name}"))
+    }
+
+    // --- read_image_file ---
+
+    #[test]
+    fn read_image_file_returns_bytes_for_existing_file() {
+        let path = unique_temp_path("small.png");
+        std::fs::write(&path, b"fake-image-bytes").unwrap();
+
+        let result = read_image_file(path.to_str().unwrap());
+        std::fs::remove_file(&path).ok();
+
+        assert_eq!(result.unwrap(), b"fake-image-bytes".to_vec());
+    }
+
+    #[test]
+    fn read_image_file_rejects_missing_file() {
+        let result = read_image_file("/nonexistent/nooto-test-path.png");
+        assert!(matches!(result, Err(CommandError { kind: ErrorKind::InvalidInput, .. })));
+    }
+
+    #[test]
+    fn read_image_file_rejects_oversized_file() {
+        let path = unique_temp_path("big.png");
+        let file = std::fs::File::create(&path).unwrap();
+        file.set_len(MAX_DROPPED_IMAGE_BYTES + 1).unwrap();
+        drop(file);
+
+        let result = read_image_file(path.to_str().unwrap());
+        std::fs::remove_file(&path).ok();
+
+        assert!(matches!(result, Err(CommandError { kind: ErrorKind::InvalidInput, .. })));
     }
 
     // --- CommandError constructors ---

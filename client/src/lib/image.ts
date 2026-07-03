@@ -8,6 +8,34 @@ export class ImageInputError extends Error {
 
 const SUPPORTED_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 
+const EXTENSION_MIME_TYPES: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  gif: "image/gif",
+};
+
+/** Best-effort mime type for a filename based on its extension, or null if unrecognized. */
+export function mimeTypeForFilename(name: string): string | null {
+  const ext = name.split(".").pop()?.toLowerCase();
+  return ext ? (EXTENSION_MIME_TYPES[ext] ?? null) : null;
+}
+
+/**
+ * Extracts a local filesystem path from a `file://` URI, or null if `uri` isn't one.
+ * Handles the Windows case where `file:///C:/...` parses with a leading slash before the drive letter.
+ */
+export function fileUriToPath(uri: string): string | null {
+  if (!uri.startsWith("file://")) return null;
+  try {
+    const decoded = decodeURIComponent(new URL(uri).pathname);
+    return /^\/[A-Za-z]:\//.test(decoded) ? decoded.slice(1) : decoded;
+  } catch {
+    return null;
+  }
+}
+
 // Notes are stored as a single encrypted blob (16MB server column limit), so embedded
 // images need to stay well within budget alongside the note's text and other images.
 const MAX_ORIGINAL_FILE_BYTES = 20 * 1024 * 1024;
