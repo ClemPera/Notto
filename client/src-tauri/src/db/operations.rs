@@ -28,6 +28,7 @@ pub fn create_note(
         parent_id,
         is_folder,
         folder_open: true,
+        pinned: false,
     })
     .context("Failed to serialize note metadata")?;
 
@@ -73,6 +74,7 @@ pub fn get_note(conn: &Connection, uuid: String, mek: Key<Aes256Gcm>) -> Result<
         parent_id: metadata.parent_id,
         is_folder: metadata.is_folder,
         folder_open: metadata.folder_open,
+        pinned: metadata.pinned,
         content: String::from_utf8(content_plaintext).context("Note content is not valid UTF-8")?,
         updated_at: note.updated_at,
         deleted: note.deleted,
@@ -96,6 +98,7 @@ pub fn update_note(conn: &Connection, note_data: NoteData, mek: Key<Aes256Gcm>) 
         parent_id: note_data.parent_id,
         is_folder: note_data.is_folder,
         folder_open: note_data.folder_open,
+        pinned: note_data.pinned,
     })
     .context("Failed to serialize note metadata")?;
 

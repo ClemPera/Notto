@@ -22,6 +22,7 @@ pub struct NoteData {
     pub parent_id: Option<String>,
     pub is_folder: bool,
     pub folder_open: bool,
+    pub pinned: bool,
     pub content: String,
     pub updated_at: i64,
     pub deleted: bool,
@@ -34,6 +35,9 @@ pub struct NoteMetadata {
     pub parent_id: Option<String>,
     pub is_folder: bool,
     pub folder_open: bool,
+    // Notes encrypted before this field existed have no `pinned` key; default to unpinned.
+    #[serde(default)]
+    pub pinned: bool,
 }
 
 /// Cryptographic material produced during account creation, sent to the server.

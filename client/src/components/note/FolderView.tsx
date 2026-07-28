@@ -1,4 +1,5 @@
 import { Note } from "../../types";
+import { sortNotes } from "../../lib/noteSort";
 import Icon from "../icons/Icon";
 
 type Props = {
@@ -8,13 +9,7 @@ type Props = {
 };
 
 export default function FolderView({ folderId, notes, onSelect }: Props) {
-  const children = notes
-    .filter((n) => n.parent_id === folderId && !n.deleted)
-    .sort((a, b) => {
-      if (a.is_folder && !b.is_folder) return -1;
-      if (!a.is_folder && b.is_folder) return 1;
-      return a.title.localeCompare(b.title);
-    });
+  const children = sortNotes(notes.filter((n) => n.parent_id === folderId && !n.deleted));
 
   if (children.length === 0) {
     return (
@@ -40,8 +35,11 @@ export default function FolderView({ folderId, notes, onSelect }: Props) {
             className={`w-6 h-6 ${child.is_folder ? "text-blue-400" : "text-slate-400"}`}
             strokeWidth={1.5}
           />
-          <span className="text-sm font-medium text-slate-300 group-hover:text-white transition-colors truncate w-full">
-            {child.title}
+          <span className="flex items-center gap-1.5 w-full min-w-0">
+            {child.pinned && <Icon name="pin" className="w-3 h-3 shrink-0 text-amber-400" />}
+            <span className="text-sm font-medium text-slate-300 group-hover:text-white transition-colors truncate">
+              {child.title}
+            </span>
           </span>
         </button>
       ))}

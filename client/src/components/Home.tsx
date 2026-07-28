@@ -108,6 +108,25 @@ export default function Home() {
       .catch(handleCommandError);
   }
 
+  /** Toggles a note or folder's pinned state from the sidebar; pinned items stay on top of their parent. */
+  async function toggle_pin(note: Note) {
+    invoke("get_note", { id: note.id })
+      .then((full: any) =>
+        invoke("edit_note", { note: { ...full, pinned: !note.pinned } })
+          .then(() => get_notes_metadata())
+      )
+      .catch(handleCommandError);
+  }
+
+  /** Toggles the pinned state of the currently open note. */
+  async function toggle_pin_current() {
+    if (!currentNote) return;
+    const note: NoteContent = { ...currentNote, pinned: !currentNote.pinned };
+    setCurrentNote(note);
+    await invoke("edit_note", { note }).catch(handleCommandError);
+    get_notes_metadata();
+  }
+
   /** Saves updated note content; skips the call if content hasn't changed. */
   async function edit_note(content: string) {
     if (!currentNote || currentNote.content === content) return;
@@ -144,6 +163,7 @@ export default function Home() {
   const callbacks: TreeCallbacks = {
     onSelectNote: get_note,
     onToggleFolder: toggle_folder,
+    onTogglePin: toggle_pin,
     onCreateNote: create_note,
     onCreateFolder: create_folder,
     onDelete: (id) => setShowDeleteNoteConfirm(true, id),
@@ -183,6 +203,7 @@ export default function Home() {
               note={currentNote}
               onOpenSidebar={() => setSidebarOpen(true)}
               onEditTitle={edit_note_title}
+              onTogglePin={toggle_pin_current}
               onDelete={() => setShowDeleteNoteConfirm(true, currentNote.id)}
               onRestore={() => restore_note(currentNote.id)}
             />
