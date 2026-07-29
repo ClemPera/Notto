@@ -36,11 +36,16 @@ pub fn run() {
         )
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            // Debug builds (`tauri dev`) use a separate database file so running the dev
+            // build alongside an installed release build on the same device doesn't
+            // corrupt either one's data.
+            let db_filename = if cfg!(debug_assertions) { "nooto-dev.db" } else { "nooto.db" };
+
             let db_path = app
                 .path()
                 .app_data_dir()
                 .map_err(|e| anyhow::anyhow!("Failed to get app data directory: {e}"))?
-                .join("nooto.db");
+                .join(db_filename);
 
             let database = db::init(db_path)
                 .map_err(|e| anyhow::anyhow!("Failed to initialise database: {e:#}"))?;
