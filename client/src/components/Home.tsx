@@ -113,7 +113,14 @@ export default function Home() {
     invoke("get_note", { id: note.id })
       .then((full: any) =>
         invoke("edit_note", { note: { ...full, pinned: !note.pinned } })
-          .then(() => get_notes_metadata())
+          .then(() => {
+            get_notes_metadata();
+            // If the toggled note is currently open, sync its pinned state
+            // so the NoteHeader updates immediately without a reload.
+            if (currentNote && currentNote.id === note.id) {
+              setCurrentNote({ ...currentNote, pinned: !note.pinned });
+            }
+          })
       )
       .catch(handleCommandError);
   }
