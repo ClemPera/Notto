@@ -5,11 +5,12 @@ type Props = {
   note: NoteContent;
   onOpenSidebar: () => void;
   onEditTitle: (title: string) => void;
+  onTogglePin: () => void;
   onDelete: () => void;
   onRestore: () => void;
 };
 
-export default function NoteHeader({ note, onOpenSidebar, onEditTitle, onDelete, onRestore }: Props) {
+export default function NoteHeader({ note, onOpenSidebar, onEditTitle, onTogglePin, onDelete, onRestore }: Props) {
   return (
     <div className="border-b border-slate-700 p-3 md:px-6 md:py-4">
       <div className="flex items-center gap-3 overflow-hidden">
@@ -31,6 +32,21 @@ export default function NoteHeader({ note, onOpenSidebar, onEditTitle, onDelete,
         />
 
         <div className="ml-auto shrink-0 flex items-center gap-3">
+          {!note.deleted && (
+            <button
+              onClick={onTogglePin}
+              className={`text-xs font-medium px-2.5 py-1.5 rounded-md transition-colors flex items-center gap-1.5 border ${
+                note.pinned
+                  ? "text-amber-400 bg-amber-400/10 border-amber-400/20 hover:bg-amber-400/20"
+                  : "text-slate-400 bg-slate-700/50 border-slate-600 hover:bg-slate-700"
+              }`}
+              title={note.pinned ? "Unpin" : "Pin"}
+            >
+              <Icon name="pin" className="w-3.5 h-3.5" />
+              {note.pinned ? "Pinned" : "Pin"}
+            </button>
+          )}
+
           {note.deleted ? (
             <button
               onClick={onRestore}

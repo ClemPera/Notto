@@ -267,6 +267,7 @@ fn decrypt_note_for_emit(note: &Note, workspace: &Workspace) -> Result<commands:
         parent_id: metadata.parent_id,
         is_folder: metadata.is_folder,
         folder_open: metadata.folder_open,
+        pinned: metadata.pinned,
         content: String::from_utf8(content_plaintext).context("Note content is not valid UTF-8")?,
         updated_at: note.updated_at,
         deleted: note.deleted,

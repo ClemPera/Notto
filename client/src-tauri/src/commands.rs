@@ -93,6 +93,7 @@ pub struct NoteMetadata {
     pub parent_id: Option<String>,
     pub is_folder: bool,
     pub folder_open: bool,
+    pub pinned: bool,
     pub updated_at: i64,
     pub deleted: bool,
 }
@@ -112,6 +113,7 @@ impl NoteMetadata {
             parent_id: metadata.parent_id,
             is_folder: metadata.is_folder,
             folder_open: metadata.folder_open,
+            pinned: metadata.pinned,
             updated_at: note.updated_at * 1000,
             deleted: note.deleted,
         })
@@ -127,6 +129,7 @@ pub struct NoteResponse {
     pub parent_id: Option<String>,
     pub is_folder: bool,
     pub folder_open: bool,
+    pub pinned: bool,
     pub content: String,
     pub updated_at: i64,
     pub deleted: bool,
@@ -140,6 +143,7 @@ impl From<NoteData> for NoteResponse {
             parent_id: note.parent_id,
             is_folder: note.is_folder,
             folder_open: note.folder_open,
+            pinned: note.pinned,
             content: note.content,
             updated_at: note.updated_at * 1000, // Unix seconds → ms for JS/TS
             deleted: note.deleted,
