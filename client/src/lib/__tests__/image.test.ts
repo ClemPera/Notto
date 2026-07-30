@@ -1,11 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import {
-  isSupportedImageType,
-  prepareImageForInsert,
-  ImageInputError,
-  mimeTypeForFilename,
-  fileUriToPath,
-} from "../image";
+import { isSupportedImageType, prepareImageForInsert, ImageInputError, mimeTypeForFilename } from "../image";
 
 function makeFile(name: string, type: string, sizeBytes = 100): File {
   return new File([new Uint8Array(sizeBytes)], name, { type });
@@ -56,28 +50,6 @@ describe("mimeTypeForFilename", () => {
   it("returns null for unrecognized or missing extensions", () => {
     expect(mimeTypeForFilename("document.pdf")).toBe(null);
     expect(mimeTypeForFilename("noextension")).toBe(null);
-  });
-});
-
-describe("fileUriToPath", () => {
-  it("returns null for non-file URIs", () => {
-    expect(fileUriToPath("https://example.com/a.png")).toBe(null);
-  });
-
-  it("decodes a plain unix path", () => {
-    expect(fileUriToPath("file:///home/clement/Downloads/3.png")).toBe(
-      "/home/clement/Downloads/3.png"
-    );
-  });
-
-  it("decodes percent-encoded characters", () => {
-    expect(fileUriToPath("file:///home/clement/My%20Photos/3.png")).toBe(
-      "/home/clement/My Photos/3.png"
-    );
-  });
-
-  it("strips the extra leading slash on Windows drive paths", () => {
-    expect(fileUriToPath("file:///C:/Users/clement/3.png")).toBe("C:/Users/clement/3.png");
   });
 });
 

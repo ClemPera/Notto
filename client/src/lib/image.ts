@@ -1,3 +1,5 @@
+import { readFileAsDataUrl, decodedByteSize } from "./file";
+
 /** Raised for any invalid image input; message is safe to show to the user. */
 export class ImageInputError extends Error {
   constructor(message: string) {
@@ -22,20 +24,6 @@ export function mimeTypeForFilename(name: string): string | null {
   return ext ? (EXTENSION_MIME_TYPES[ext] ?? null) : null;
 }
 
-/**
- * Extracts a local filesystem path from a `file://` URI, or null if `uri` isn't one.
- * Handles the Windows case where `file:///C:/...` parses with a leading slash before the drive letter.
- */
-export function fileUriToPath(uri: string): string | null {
-  if (!uri.startsWith("file://")) return null;
-  try {
-    const decoded = decodeURIComponent(new URL(uri).pathname);
-    return /^\/[A-Za-z]:\//.test(decoded) ? decoded.slice(1) : decoded;
-  } catch {
-    return null;
-  }
-}
-
 // Notes are stored as a single encrypted blob (16MB server column limit), so embedded
 // images need to stay well within budget alongside the note's text and other images.
 const MAX_ORIGINAL_FILE_BYTES = 20 * 1024 * 1024;
@@ -47,15 +35,6 @@ export function isSupportedImageType(file: File): boolean {
   return SUPPORTED_TYPES.has(file.type);
 }
 
-export function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new ImageInputError("Failed to read image file."));
-    reader.readAsDataURL(file);
-  });
-}
-
 function loadImageElement(dataUrl: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -63,12 +42,6 @@ function loadImageElement(dataUrl: string): Promise<HTMLImageElement> {
     img.onerror = () => reject(new ImageInputError("Failed to decode image."));
     img.src = dataUrl;
   });
-}
-
-/** Returns the approximate decoded byte size of a base64 data URL. */
-function decodedByteSize(dataUrl: string): number {
-  const base64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
-  return Math.floor((base64.length * 3) / 4);
 }
 
 /**
@@ -107,7 +80,12 @@ export async function prepareImageForInsert(file: File): Promise<string> {
     throw new ImageInputError("Image is too large (max 20 MB).");
   }
 
-  const original = await readFileAsDataUrl(file);
+  let original: string;
+  try {
+    original = await readFileAsDataUrl(file);
+  } catch {
+    throw new ImageInputError("Failed to read image file.");
+  }
   const resized = await resizeIfNeeded(original, file.type, MAX_IMAGE_DIMENSION);
 
   if (decodedByteSize(resized) > MAX_EMBEDDED_BYTES) {
