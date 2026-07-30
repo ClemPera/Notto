@@ -1,12 +1,12 @@
 use anyhow::Context;
 use chrono::Local;
 use shared::{SelectNoteParams, SentNotes};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::Mutex;
 
 use serde::Serialize;
 use tauri_plugin_log::log::{debug, error, trace};
-use uuid::Uuid;
+use uuid::{NoContext, Uuid};
 
 use crate::crypt::NoteData;
 use crate::db;
@@ -698,6 +698,89 @@ pub async fn handle_conflict(
     Ok(())
 }
 
+const MAX_DROPPED_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
+const MAX_DROPPED_ATTACHMENT_BYTES: u64 = 8 * 1024 * 1024;
+
+/// Reads and size-checks a local file. Kept separate from the command wrappers so it's testable without a Tauri runtime.
+fn read_local_file(path: &str, max_bytes: u64) -> Result<Vec<u8>, CommandError> {
+    let metadata = std::fs::metadata(path)
+        .map_err(|e| CommandError::invalid_input(format!("Cannot read '{path}': {e}")))?;
+
+    if !metadata.is_file() {
+        return Err(CommandError::invalid_input(format!("'{path}' is not a file")));
+    }
+    if metadata.len() > max_bytes {
+        return Err(CommandError::invalid_input(format!(
+            "File is too large (max {} MB)",
+            max_bytes / (1024 * 1024)
+        )));
+    }
+
+    std::fs::read(path).map_err(|e| CommandError::invalid_input(format!("Cannot read '{path}': {e}")))
+}
+
+/// Reads a dropped image's raw bytes from disk. WebKitGTK doesn't expose OS file drops
+/// through the browser's File API, only a `file://` path, so the frontend resolves that
+/// path and reads the bytes through this command instead.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn read_dropped_image(path: String) -> Result<Vec<u8>, CommandError> {
+    read_local_file(&path, MAX_DROPPED_IMAGE_BYTES)
+}
+
+/// Same as `read_dropped_image`, but for arbitrary file attachments dropped from the OS.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn read_dropped_attachment(path: String) -> Result<Vec<u8>, CommandError> {
+    read_local_file(&path, MAX_DROPPED_ATTACHMENT_BYTES)
+}
+
+/// Strips path separators and characters that are invalid in filenames on Windows, so a
+/// malicious or malformed attachment name can't escape the temp directory it's written to.
+fn sanitize_filename(name: &str) -> String {
+    let base = name.rsplit(['/', '\\']).next().unwrap_or(name);
+    let cleaned: String = base
+        .chars()
+        .map(|c| {
+            if c.is_control() || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+
+    match cleaned.trim() {
+        "" | "." | ".." => "attachment".to_string(),
+        trimmed => trimmed.to_string(),
+    }
+}
+
+/// Writes decrypted attachment bytes to a fresh temp directory so the OS opener can hand
+/// them to the default app for that file type: `openPath` needs a filesystem path, not raw
+/// bytes. Each call gets its own UUID subdirectory so repeated opens of same-named
+/// attachments never collide or overwrite each other.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn write_temp_attachment(
+    app: AppHandle,
+    filename: String,
+    data: Vec<u8>,
+) -> Result<String, CommandError> {
+    let dir = app
+        .path()
+        .temp_dir()
+        .context("Failed to get temp directory")?
+        .join("nooto-attachments")
+        .join(Uuid::new_v7(uuid::Timestamp::now(NoContext)).to_string());
+
+    std::fs::create_dir_all(&dir).context("Failed to create temp directory")?;
+
+    let path = dir.join(sanitize_filename(&filename));
+    std::fs::write(&path, &data).context("Failed to write attachment")?;
+
+    path.to_str()
+        .map(str::to_string)
+        .ok_or_else(|| CommandError::invalid_input("Temp path is not valid UTF-8"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -722,6 +805,83 @@ mod tests {
             last_sync_at: 0,
             latest_note_id: None,
         }
+    }
+
+    fn unique_temp_path(name: &str) -> std::path::PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("nooto-test-{nanos}-{name}"))
+    }
+
+    // --- read_local_file ---
+
+    #[test]
+    fn read_local_file_returns_bytes_for_existing_file() {
+        let path = unique_temp_path("small.png");
+        std::fs::write(&path, b"fake-image-bytes").unwrap();
+
+        let result = read_local_file(path.to_str().unwrap(), MAX_DROPPED_IMAGE_BYTES);
+        std::fs::remove_file(&path).ok();
+
+        assert_eq!(result.unwrap(), b"fake-image-bytes".to_vec());
+    }
+
+    #[test]
+    fn read_local_file_rejects_missing_file() {
+        let result = read_local_file("/nonexistent/nooto-test-path.png", MAX_DROPPED_IMAGE_BYTES);
+        assert!(matches!(result, Err(CommandError { kind: ErrorKind::InvalidInput, .. })));
+    }
+
+    #[test]
+    fn read_local_file_rejects_file_above_given_limit() {
+        let path = unique_temp_path("big.png");
+        let file = std::fs::File::create(&path).unwrap();
+        file.set_len(MAX_DROPPED_IMAGE_BYTES + 1).unwrap();
+        drop(file);
+
+        let result = read_local_file(path.to_str().unwrap(), MAX_DROPPED_IMAGE_BYTES);
+        std::fs::remove_file(&path).ok();
+
+        assert!(matches!(result, Err(CommandError { kind: ErrorKind::InvalidInput, .. })));
+    }
+
+    #[test]
+    fn read_local_file_respects_the_caller_supplied_limit() {
+        let path = unique_temp_path("attachment.bin");
+        let file = std::fs::File::create(&path).unwrap();
+        file.set_len(MAX_DROPPED_ATTACHMENT_BYTES + 1).unwrap();
+        drop(file);
+
+        let result = read_local_file(path.to_str().unwrap(), MAX_DROPPED_ATTACHMENT_BYTES);
+        std::fs::remove_file(&path).ok();
+
+        assert!(matches!(result, Err(CommandError { kind: ErrorKind::InvalidInput, .. })));
+    }
+
+    // --- sanitize_filename ---
+
+    #[test]
+    fn sanitize_filename_keeps_normal_names_unchanged() {
+        assert_eq!(sanitize_filename("report.pdf"), "report.pdf");
+    }
+
+    #[test]
+    fn sanitize_filename_strips_path_separators_to_prevent_traversal() {
+        assert_eq!(sanitize_filename("../../etc/passwd"), "passwd");
+        assert_eq!(sanitize_filename("..\\..\\windows\\system32\\evil.dll"), "evil.dll");
+    }
+
+    #[test]
+    fn sanitize_filename_replaces_reserved_characters() {
+        assert_eq!(sanitize_filename("weird:name?.txt"), "weird_name_.txt");
+    }
+
+    #[test]
+    fn sanitize_filename_falls_back_for_empty_or_dot_names() {
+        assert_eq!(sanitize_filename(""), "attachment");
+        assert_eq!(sanitize_filename(".."), "attachment");
     }
 
     // --- CommandError constructors ---

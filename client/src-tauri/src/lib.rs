@@ -76,7 +76,10 @@ pub fn run() {
             commands::restore_note,
             commands::create_folder,
             commands::get_latest_note_id,
-            commands::handle_conflict
+            commands::handle_conflict,
+            commands::read_dropped_image,
+            commands::read_dropped_attachment,
+            commands::write_temp_attachment
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
