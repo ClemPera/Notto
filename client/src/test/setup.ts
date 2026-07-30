@@ -17,3 +17,7 @@ vi.mock("@tauri-apps/plugin-log", () => ({
   debug: vi.fn(),
   trace: vi.fn(),
 }));
+
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  openPath: vi.fn(),
+}));

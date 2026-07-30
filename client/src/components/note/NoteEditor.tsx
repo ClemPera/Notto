@@ -4,8 +4,11 @@ import { Markdown } from "@tiptap/markdown";
 import type { EditorView } from "@tiptap/pm/view";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef } from "react";
-import { prepareImageForInsert, ImageInputError, mimeTypeForFilename, fileUriToPath } from "../../lib/image";
+import { prepareImageForInsert, ImageInputError, mimeTypeForFilename } from "../../lib/image";
+import { fileUriToPath } from "../../lib/file";
 import { ResizableImage } from "../../lib/resizableImage";
+import { prepareAttachmentForInsert, AttachmentInputError } from "../../lib/attachment";
+import { Attachment } from "../../lib/attachmentNode";
 import { useToasts } from "../../store/toasts";
 import { handleCommandError } from "../../lib/errors";
 import "./NoteEditor.css";
@@ -47,6 +50,40 @@ async function insertImageFromPathAtPos(view: EditorView, path: string, pos: num
     view.dispatch(view.state.tr.insert(pos, node));
   } catch (err) {
     if (err instanceof ImageInputError) {
+      useToasts.getState().addToast({ kind: "invalid_input", message: err.message });
+    } else {
+      handleCommandError(err);
+    }
+  }
+}
+
+/** Inserts `file` as an attachment node at `pos`, mirroring insertImageAtPos. */
+async function insertAttachmentAtPos(view: EditorView, file: File, pos: number) {
+  try {
+    const attrs = await prepareAttachmentForInsert(file);
+    if (view.isDestroyed) return;
+    const node = view.state.schema.nodes.attachment.create(attrs);
+    view.dispatch(view.state.tr.insert(pos, node));
+  } catch (err) {
+    const message = err instanceof AttachmentInputError ? err.message : "Failed to insert attachment.";
+    useToasts.getState().addToast({ kind: "invalid_input", message });
+  }
+}
+
+/** Same as insertAttachmentAtPos, but for OS file drops resolved to a `file://` path. */
+async function insertAttachmentFromPathAtPos(view: EditorView, path: string, pos: number) {
+  try {
+    const bytes = await invoke<number[]>("read_dropped_attachment", { path });
+    if (view.isDestroyed) return;
+    const name = path.split(/[/\\]/).pop() ?? "attachment";
+    const mimeType = mimeTypeForFilename(name) ?? "application/octet-stream";
+    const file = new File([new Uint8Array(bytes)], name, { type: mimeType });
+    const attrs = await prepareAttachmentForInsert(file);
+    if (view.isDestroyed) return;
+    const node = view.state.schema.nodes.attachment.create(attrs);
+    view.dispatch(view.state.tr.insert(pos, node));
+  } catch (err) {
+    if (err instanceof AttachmentInputError) {
       useToasts.getState().addToast({ kind: "invalid_input", message: err.message });
     } else {
       handleCommandError(err);
@@ -100,6 +137,7 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
   const lastContentRef = useRef(content);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
 
   const editor = useEditor({
     extensions: [
@@ -110,6 +148,7 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
         allowBase64: true,
         resize: { enabled: true, alwaysPreserveAspectRatio: true, minWidth: 60, minHeight: 60 },
       }),
+      Attachment,
     ],
     content,
     contentType: "markdown",
@@ -128,13 +167,20 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
     editorProps: {
       handlePaste: (view, event) => {
         if (!view.editable) return false;
-        const file = Array.from(event.clipboardData?.items ?? [])
-          .find((item) => item.type.startsWith("image/"))
-          ?.getAsFile();
+        const items = Array.from(event.clipboardData?.items ?? []);
+
+        const imageFile = items.find((item) => item.type.startsWith("image/"))?.getAsFile();
+        if (imageFile) {
+          event.preventDefault();
+          insertImageAtPos(view, imageFile, view.state.selection.from);
+          return true;
+        }
+
+        const file = items.find((item) => item.kind === "file")?.getAsFile();
         if (!file) return false;
 
         event.preventDefault();
-        insertImageAtPos(view, file, view.state.selection.from);
+        insertAttachmentAtPos(view, file, view.state.selection.from);
         return true;
       },
       handleDrop: (view, event) => {
@@ -143,12 +189,16 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
           view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos ??
           view.state.selection.from;
 
-        const file = Array.from(event.dataTransfer?.files ?? []).find((f) =>
-          f.type.startsWith("image/")
-        );
-        if (file) {
+        const files = Array.from(event.dataTransfer?.files ?? []);
+        const imageFile = files.find((f) => f.type.startsWith("image/"));
+        if (imageFile) {
           event.preventDefault();
-          insertImageAtPos(view, file, pos);
+          insertImageAtPos(view, imageFile, pos);
+          return true;
+        }
+        if (files[0]) {
+          event.preventDefault();
+          insertAttachmentAtPos(view, files[0], pos);
           return true;
         }
 
@@ -159,13 +209,19 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
         if (!path) return false;
 
         event.preventDefault();
-        insertImageFromPathAtPos(view, path, pos);
+        const name = path.split(/[/\\]/).pop() ?? "";
+        if (mimeTypeForFilename(name)) {
+          insertImageFromPathAtPos(view, path, pos);
+        } else {
+          insertAttachmentFromPathAtPos(view, path, pos);
+        }
         return true;
       },
     },
   });
 
   const handleInsertImageClick = () => fileInputRef.current?.click();
+  const handleInsertAttachmentClick = () => attachmentInputRef.current?.click();
 
   const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -177,6 +233,20 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
       editor.chain().focus().setImage({ src, alt: file.name }).run();
     } catch (err) {
       const message = err instanceof ImageInputError ? err.message : "Failed to insert image.";
+      useToasts.getState().addToast({ kind: "invalid_input", message });
+    }
+  };
+
+  const handleAttachmentSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !editor) return;
+
+    try {
+      const attrs = await prepareAttachmentForInsert(file);
+      editor.chain().focus().setAttachment(attrs).run();
+    } catch (err) {
+      const message = err instanceof AttachmentInputError ? err.message : "Failed to insert attachment.";
       useToasts.getState().addToast({ kind: "invalid_input", message });
     }
   };
@@ -347,6 +417,18 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
           onChange={handleFileSelected}
           className="hidden"
         />
+
+        <ToolbarButton onClick={handleInsertAttachmentClick} disabled={isDisabled} title="Insert attachment">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M21.44 11.05l-9.19 9.19a5 5 0 01-7.07-7.07l9.19-9.19a3.5 3.5 0 014.95 4.95l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"
+            />
+          </svg>
+        </ToolbarButton>
+        <input ref={attachmentInputRef} type="file" onChange={handleAttachmentSelected} className="hidden" />
 
         <Divider />
 

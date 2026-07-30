@@ -158,3 +158,108 @@ describe("NoteEditor image insertion", () => {
     expect(img.getAttribute("alt")).toBe("3.png");
   });
 });
+
+function makeAttachmentFile(name = "report.pdf", type = "application/pdf") {
+  return new File([new Uint8Array(50)], name, { type });
+}
+
+describe("NoteEditor attachment insertion", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function attachmentInput(container: HTMLElement) {
+    return container.querySelectorAll('input[type="file"]')[1] as HTMLInputElement;
+  }
+
+  it("inserts an attachment via the toolbar button and syncs it back as markdown", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+
+    const { container } = render(
+      <NoteEditor noteId="note-6" content="" onChange={onChange} disabled={false} />
+    );
+
+    await user.upload(attachmentInput(container), makeAttachmentFile("report.pdf"));
+
+    await waitFor(() => {
+      expect(container.querySelector(".note-attachment")).toBeTruthy();
+    });
+    expect(container.querySelector(".note-attachment-name")?.textContent).toBe("report.pdf");
+
+    await waitFor(
+      () => {
+        expect(onChange).toHaveBeenCalled();
+      },
+      { timeout: 1000 }
+    );
+    const lastMarkdown = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
+    expect(lastMarkdown).toMatch(/<a data-attachment href="data:application\/pdf;base64,[^"]+"/);
+  });
+
+  it("disables the insert-attachment button when the editor is disabled", () => {
+    render(<NoteEditor noteId="note-7" content="" onChange={vi.fn()} disabled={true} />);
+    expect(screen.getByTitle("Insert attachment")).toBeDisabled();
+  });
+
+  it("inserts a non-image file at the cursor position on paste", async () => {
+    const { container } = render(
+      <NoteEditor noteId="note-8" content="hello" onChange={vi.fn()} disabled={false} />
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector(".ProseMirror")).toBeTruthy();
+    });
+    const pm = container.querySelector(".ProseMirror") as HTMLElement;
+
+    const file = makeAttachmentFile("pasted.pdf");
+    const clipboardData = {
+      items: [{ type: "application/pdf", kind: "file", getAsFile: () => file }],
+      files: [file],
+      types: ["Files"],
+      getData: () => "",
+    };
+    const pasteEvent = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(pasteEvent, "clipboardData", { value: clipboardData });
+    pm.dispatchEvent(pasteEvent);
+
+    await waitFor(() => {
+      expect(container.querySelector(".note-attachment")).toBeTruthy();
+    });
+    expect(container.querySelector(".note-attachment-name")?.textContent).toBe("pasted.pdf");
+  });
+
+  it("reads a dropped non-image file from disk when only a file:// path is available", async () => {
+    vi.mocked(invoke).mockResolvedValue(Array.from(new Uint8Array([1, 2, 3, 4])));
+    document.elementFromPoint = vi.fn(() => null);
+
+    const { container } = render(
+      <NoteEditor noteId="note-9" content="" onChange={vi.fn()} disabled={false} />
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector(".ProseMirror")).toBeTruthy();
+    });
+    const pm = container.querySelector(".ProseMirror") as HTMLElement;
+
+    const dataTransfer = {
+      files: [],
+      getData: (type: string) =>
+        type === "text/uri-list" ? "file:///home/clement/Downloads/report.pdf" : "",
+    };
+    const dropEvent = new Event("drop", { bubbles: true, cancelable: true });
+    Object.defineProperty(dropEvent, "dataTransfer", { value: dataTransfer });
+    Object.defineProperty(dropEvent, "clientX", { value: 0 });
+    Object.defineProperty(dropEvent, "clientY", { value: 0 });
+    pm.dispatchEvent(dropEvent);
+
+    await waitFor(() => {
+      expect(container.querySelector(".note-attachment")).toBeTruthy();
+    });
+
+    expect(invoke).toHaveBeenCalledWith("read_dropped_attachment", {
+      path: "/home/clement/Downloads/report.pdf",
+    });
+    expect(container.querySelector(".note-attachment-name")?.textContent).toBe("report.pdf");
+  });
+});

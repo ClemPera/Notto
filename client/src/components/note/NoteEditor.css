@@ -179,3 +179,43 @@
   pointer-events: none;
   height: 0;
 }
+
+.note-attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.5rem;
+  margin: 0 0.1rem;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  color: #93c5fd;
+  font-size: 0.85em;
+  line-height: 1.6;
+  cursor: pointer;
+  user-select: none;
+  vertical-align: middle;
+}
+
+.note-attachment:hover,
+.note-attachment.ProseMirror-selectednode {
+  border-color: #60a5fa;
+  background: #24324a;
+}
+
+.note-attachment-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.note-attachment-name {
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-attachment-size {
+  color: #64748b;
+  flex-shrink: 0;
+}
