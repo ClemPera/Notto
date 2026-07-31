@@ -49,7 +49,7 @@ function App() {
   const { workspace } = useGeneral();
 
   return (
-    <div className="h-screen w-screen">
+    <div className="h-dvh w-screen">
       <LogoutWorkspaceConfirmModal />
       <DeleteNoteConfirmModal />
       <ConflictModal />
