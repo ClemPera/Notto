@@ -10,6 +10,7 @@ const mockNote: Note = {
   parent_id: null,
   is_folder: false,
   folder_open: false,
+  pinned: false,
   updated_at: new Date(),
   deleted: false,
 };

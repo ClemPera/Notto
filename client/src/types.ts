@@ -11,6 +11,7 @@ export type Note = {
   parent_id: string | null;
   is_folder: boolean;
   folder_open: boolean;
+  pinned: boolean;
   updated_at: Date;
   deleted: boolean;
 };
@@ -22,6 +23,7 @@ export type NoteContent = {
   parent_id: string | null;
   is_folder: boolean;
   folder_open: boolean;
+  pinned: boolean;
   content: string;
   updated_at: Date;
   deleted: boolean;

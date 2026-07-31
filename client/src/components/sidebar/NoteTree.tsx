@@ -1,10 +1,12 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { Note } from "../../types";
+import { sortNotes } from "../../lib/noteSort";
 import Icon from "../icons/Icon";
 
 export type TreeCallbacks = {
   onSelectNote: (id: string) => void;
   onToggleFolder: (note: Note) => void;
+  onTogglePin: (note: Note) => void;
   onCreateNote: (parentId: string | null) => void;
   onCreateFolder: (parentId: string | null) => void;
   onDelete: (id: string) => void;
@@ -23,13 +25,7 @@ type NoteTreeItemProps = {
 };
 
 export function buildTree(nodes: Note[], parentId: string | null): Note[] {
-  return nodes
-    .filter((n) => n.parent_id === parentId)
-    .sort((a, b) => {
-      if (a.is_folder && !b.is_folder) return -1;
-      if (!a.is_folder && b.is_folder) return 1;
-      return a.title.localeCompare(b.title);
-    });
+  return sortNotes(nodes.filter((n) => n.parent_id === parentId));
 }
 
 export function DragGhostItem({ note }: { note: Note }) {
@@ -135,6 +131,9 @@ export function NoteTreeItem({
               name={note.is_folder ? "folder" : "document"}
               className={`w-4 h-4 shrink-0 ${note.is_folder ? "text-blue-400" : "text-slate-400"}`}
             />
+            {note.pinned && !isSearchResult && (
+              <Icon name="pin" className="w-3 h-3 shrink-0 text-amber-400" />
+            )}
             <span
               className={`text-sm font-medium truncate transition-colors ${
                 isActive ? "text-white" : "text-slate-300 group-hover:text-white"
@@ -147,6 +146,17 @@ export function NoteTreeItem({
 
         {!showDeleted && (
           <div className="flex items-center mr-1">
+            <button
+              onClick={(e) => { e.stopPropagation(); callbacks.onTogglePin(note); }}
+              className={`p-1 rounded-md transition-all duration-150 ${
+                note.pinned
+                  ? "text-amber-400 hover:text-amber-300 hover:bg-amber-400/10"
+                  : "text-slate-500 hover:text-white hover:bg-slate-600"
+              }`}
+              title={note.pinned ? "Unpin" : "Pin"}
+            >
+              <Icon name="pin" className="w-3.5 h-3.5" />
+            </button>
             {note.is_folder && (
               <>
                 <button

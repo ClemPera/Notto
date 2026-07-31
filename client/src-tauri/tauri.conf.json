@@ -47,6 +47,9 @@
       "nsis": {
         "installMode": "currentUser"
       }
+    },
+    "android": {
+      "debugApplicationIdSuffix": ".debug"
     }
   }
 }
