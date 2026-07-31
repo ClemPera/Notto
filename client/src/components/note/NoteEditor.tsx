@@ -54,6 +54,16 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
     content,
     contentType: "markdown",
     editable: !disabled,
+    editorProps: {
+      handlePaste: (_view, event) => {
+        const clipboardData = event.clipboardData;
+        if (!clipboardData || clipboardData.getData("text/html")) return false;
+        const text = clipboardData.getData("text/plain");
+        if (!text) return false;
+        editor?.commands.insertContent(text, { contentType: "markdown" });
+        return true;
+      },
+    },
     onUpdate: ({ editor }) => {
       if (isSwitchingRef.current) return;
       const markdown = editor.getMarkdown();
