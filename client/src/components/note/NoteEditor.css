@@ -59,6 +59,11 @@
   color: #64748b;
 }
 
+.note-editor .ProseMirror a {
+  color: #60a5fa;
+  text-decoration: underline;
+}
+
 .note-editor .ProseMirror code {
   font-family: ui-monospace, monospace;
   font-size: 0.85em;
