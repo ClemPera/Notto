@@ -318,6 +318,17 @@ impl Workspace {
         Ok(())
     }
 
+    /// Updates only the `last_sync_at` column for the given workspace.
+    pub fn update_last_sync_at(conn: &Connection, workspace_id: u32, timestamp: i64) -> Result<()> {
+        conn.execute(
+            "UPDATE workspace SET last_sync_at = ? WHERE id = ?",
+            (timestamp, workspace_id),
+        )
+        .context("Failed to update last sync timestamp on workspace")?;
+
+        Ok(())
+    }
+
     /// Deletes this workspace row from the database.
     pub fn delete(&self, conn: &Connection) -> Result<()> {
         conn.execute("DELETE FROM workspace WHERE id = ?", (&self.id,))
@@ -643,6 +654,22 @@ mod tests {
         Workspace::update_latest_note(&conn, id, Some("some-note-uuid")).unwrap();
 
         let fetched = Workspace::select(&conn, "ws".to_string()).unwrap().unwrap();
+        assert_eq!(fetched.latest_note_id, Some("some-note-uuid".to_string()));
+    }
+
+    #[test]
+    fn workspace_update_last_sync_at_does_not_clobber_other_columns() {
+        let conn = open_db();
+        let ws = sample_workspace("ws");
+        ws.insert(&conn).unwrap();
+        let id = conn.last_insert_rowid() as u32;
+
+        // Simulate a note being opened concurrently with a sync tick.
+        Workspace::update_latest_note(&conn, id, Some("some-note-uuid")).unwrap();
+        Workspace::update_last_sync_at(&conn, id, 1234567890).unwrap();
+
+        let fetched = Workspace::select(&conn, "ws".to_string()).unwrap().unwrap();
+        assert_eq!(fetched.last_sync_at, 1234567890);
         assert_eq!(fetched.latest_note_id, Some("some-note-uuid".to_string()));
     }
 

@@ -236,18 +236,23 @@ pub async fn send_latest_notes(
 /// Advances `last_sync_at` to `timestamp + 1` in both the in-memory state and the database.
 pub async fn update_last_sync(
     state: &Mutex<AppState>,
-    mut updated_workspace: Workspace,
+    updated_workspace: Workspace,
     timestamp: i64,
 ) -> Result<()> {
     let mut state = state.lock().await;
+    let last_sync_at = timestamp + 1;
 
-    updated_workspace.last_sync_at = timestamp + 1;
-    state.workspace = Some(updated_workspace.clone());
+    {
+        let conn = state.database.lock().await;
+        Workspace::update_last_sync_at(&conn, updated_workspace.id, last_sync_at)
+            .context("Failed to persist last sync timestamp")?;
+    }
 
-    let conn = state.database.lock().await;
-    updated_workspace
-        .update(&conn)
-        .context("Failed to persist last sync timestamp")?;
+    // Only touch this field, the passed-in workspace can be a stale snapshot from
+    // earlier in the sync tick and must not clobber concurrent changes to other fields.
+    if let Some(workspace) = state.workspace.as_mut() {
+        workspace.last_sync_at = last_sync_at;
+    }
 
     Ok(())
 }

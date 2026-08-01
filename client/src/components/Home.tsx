@@ -220,6 +220,8 @@ export default function Home() {
                   folderId={currentNote.id}
                   notes={notes}
                   onSelect={get_note}
+                  onCreateNote={create_note}
+                  onCreateFolder={create_folder}
                 />
               ) : (
                 <NoteEditor
