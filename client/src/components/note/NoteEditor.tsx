@@ -193,6 +193,30 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
           </svg>
         </ToolbarButton>
+        <ToolbarButton
+          onClick={() => editor?.chain().focus().liftListItem("listItem").run()}
+          disabled={isDisabled || !editor?.can().liftListItem("listItem")}
+          title="Outdent list item"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 6l-7 0" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12l-9 0" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 18l-7 0" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 8l-4 4l4 4" />
+          </svg>
+        </ToolbarButton>
+        <ToolbarButton
+          onClick={() => editor?.chain().focus().sinkListItem("listItem").run()}
+          disabled={isDisabled || !editor?.can().sinkListItem("listItem")}
+          title="Indent list item"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 6l-11 0" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12l-7 0" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 18l-11 0" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8l4 4l-4 4" />
+          </svg>
+        </ToolbarButton>
 
         <Divider />
 
