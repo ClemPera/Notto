@@ -3,7 +3,7 @@
   outline: none;
   color: #cbd5e1;
   font-size: 0.9375rem;
-  line-height: 1.75;
+  line-height: 1.5;
   min-width: 0;
   width: 100%;
   overflow-wrap: break-word;
@@ -57,6 +57,11 @@
 .note-editor .ProseMirror s {
   text-decoration: line-through;
   color: #64748b;
+}
+
+.note-editor .ProseMirror a {
+  color: #60a5fa;
+  text-decoration: underline;
 }
 
 .note-editor .ProseMirror code {
