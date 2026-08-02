@@ -22,6 +22,21 @@ export function mimeTypeForFilename(name: string): string | null {
   return ext ? (EXTENSION_MIME_TYPES[ext] ?? null) : null;
 }
 
+/** Identifies an image's mime type from its magic bytes. Needed for sources with no usable
+ * filename, e.g. the content:// URIs Android's file picker returns. */
+export function sniffImageMimeType(bytes: Uint8Array): string | null {
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return "image/png";
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+  if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) return "image/gif";
+  if (
+    bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+    bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50
+  ) {
+    return "image/webp";
+  }
+  return null;
+}
+
 /**
  * Extracts a local filesystem path from a `file://` URI, or null if `uri` isn't one.
  * Handles the Windows case where `file:///C:/...` parses with a leading slash before the drive letter.
@@ -36,12 +51,16 @@ export function fileUriToPath(uri: string): string | null {
   }
 }
 
-// Notes are stored as a single encrypted blob (16MB server column limit), so embedded
-// images need to stay well within budget alongside the note's text and other images.
+// Notes are stored as a single encrypted blob (16MB server MEDIUMBLOB column limit), so the
+// combined size of embedded images plus text needs to stay comfortably under that. A single
+// image is capped well below the column limit so it can never dominate the budget on its own,
+// and the note-wide budget is enforced separately since ciphertext size tracks plaintext size
+// (AES-GCM adds only a 16-byte tag) with no extra base64 layer at rest.
 const MAX_ORIGINAL_FILE_BYTES = 20 * 1024 * 1024;
-const MAX_EMBEDDED_BYTES = 8 * 1024 * 1024;
-const MAX_IMAGE_DIMENSION = 1600;
-const JPEG_QUALITY = 0.85;
+const MAX_EMBEDDED_BYTES = 4 * 1024 * 1024;
+const MAX_NOTE_IMAGE_BUDGET_BYTES = 12 * 1024 * 1024;
+const MAX_IMAGE_DIMENSION = 1280;
+const JPEG_QUALITY = 0.75;
 
 export function isSupportedImageType(file: File): boolean {
   return SUPPORTED_TYPES.has(file.type);
@@ -66,7 +85,7 @@ function loadImageElement(dataUrl: string): Promise<HTMLImageElement> {
 }
 
 /** Returns the approximate decoded byte size of a base64 data URL. */
-function decodedByteSize(dataUrl: string): number {
+export function decodedByteSize(dataUrl: string): number {
   const base64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
   return Math.floor((base64.length * 3) / 4);
 }
@@ -98,8 +117,12 @@ async function resizeIfNeeded(dataUrl: string, mimeType: string, maxDimension: n
   return canvas.toDataURL(outputType, JPEG_QUALITY);
 }
 
-/** Validates, reads and downscales an image file, returning a data URL ready to embed in a note. */
-export async function prepareImageForInsert(file: File): Promise<string> {
+/**
+ * Validates, reads and downscales an image file, returning a data URL ready to embed in a note.
+ * `existingImageBytes` is the combined decoded size of images already in the note; passing it
+ * keeps the whole note within the server's size limit even when many images are added over time.
+ */
+export async function prepareImageForInsert(file: File, existingImageBytes = 0): Promise<string> {
   if (!isSupportedImageType(file)) {
     throw new ImageInputError("Unsupported image format. Use PNG, JPEG, WebP or GIF.");
   }
@@ -109,9 +132,15 @@ export async function prepareImageForInsert(file: File): Promise<string> {
 
   const original = await readFileAsDataUrl(file);
   const resized = await resizeIfNeeded(original, file.type, MAX_IMAGE_DIMENSION);
+  const resizedBytes = decodedByteSize(resized);
 
-  if (decodedByteSize(resized) > MAX_EMBEDDED_BYTES) {
+  if (resizedBytes > MAX_EMBEDDED_BYTES) {
     throw new ImageInputError("Image is too large even after compression. Try a smaller image.");
+  }
+  if (existingImageBytes + resizedBytes > MAX_NOTE_IMAGE_BUDGET_BYTES) {
+    throw new ImageInputError(
+      "This note is close to its size limit. Remove or resize an existing image before adding more."
+    );
   }
 
   return resized;

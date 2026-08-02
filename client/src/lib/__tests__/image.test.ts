@@ -5,6 +5,7 @@ import {
   ImageInputError,
   mimeTypeForFilename,
   fileUriToPath,
+  sniffImageMimeType,
 } from "../image";
 
 function makeFile(name: string, type: string, sizeBytes = 100): File {
@@ -81,6 +82,25 @@ describe("fileUriToPath", () => {
   });
 });
 
+describe("sniffImageMimeType", () => {
+  it("identifies formats from magic bytes", () => {
+    expect(sniffImageMimeType(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0]))).toBe(
+      "image/png"
+    );
+    expect(sniffImageMimeType(new Uint8Array([0xff, 0xd8, 0xff, 0, 0]))).toBe("image/jpeg");
+    expect(sniffImageMimeType(new Uint8Array([0x47, 0x49, 0x46, 0x38, 0, 0]))).toBe("image/gif");
+    expect(
+      sniffImageMimeType(
+        new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50])
+      )
+    ).toBe("image/webp");
+  });
+
+  it("returns null for unrecognized bytes, e.g. a filename-less Android content URI read", () => {
+    expect(sniffImageMimeType(new Uint8Array([1, 2, 3, 4]))).toBe(null);
+  });
+});
+
 describe("prepareImageForInsert", () => {
   const originalImage = globalThis.Image;
 
@@ -133,8 +153,8 @@ describe("prepareImageForInsert", () => {
 
     const result = await prepareImageForInsert(makeFile("large.jpg", "image/jpeg"));
 
-    expect(drawImage).toHaveBeenCalledWith(expect.anything(), 0, 0, 1600, 800);
-    expect(toDataURL).toHaveBeenCalledWith("image/jpeg", 0.85);
+    expect(drawImage).toHaveBeenCalledWith(expect.anything(), 0, 0, 1280, 640);
+    expect(toDataURL).toHaveBeenCalledWith("image/jpeg", 0.75);
     expect(result).toBe("data:image/jpeg;base64,cmVzaXplZA==");
   });
 
@@ -161,7 +181,7 @@ describe("prepareImageForInsert", () => {
     // @ts-expect-error test double for HTMLImageElement
     globalThis.Image = LargeImage;
 
-    const hugeBase64 = "A".repeat(12 * 1024 * 1024); // decodes to ~9MB, above the 8MB cap
+    const hugeBase64 = "A".repeat(12 * 1024 * 1024); // decodes to ~9MB, above the 4MB cap
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(
       { drawImage: vi.fn() } as unknown as CanvasRenderingContext2D
     );
@@ -172,5 +192,35 @@ describe("prepareImageForInsert", () => {
     await expect(prepareImageForInsert(makeFile("large.png", "image/png"))).rejects.toThrow(
       /too large even after compression/
     );
+  });
+
+  it("rejects an otherwise-fine image once the note's total image budget is exceeded", async () => {
+    class SmallImage extends FakeImage {
+      naturalWidth = 400;
+      naturalHeight = 300;
+    }
+    // @ts-expect-error test double for HTMLImageElement
+    globalThis.Image = SmallImage;
+
+    // Already at 11.5MB of images in the note; 12MB budget leaves under 1MB of headroom.
+    const existingImageBytes = 11.5 * 1024 * 1024;
+
+    await expect(
+      prepareImageForInsert(makeFile("one-more.png", "image/png", 900 * 1024), existingImageBytes)
+    ).rejects.toThrow(/size limit/);
+  });
+
+  it("allows an image that fits within the remaining note budget", async () => {
+    class SmallImage extends FakeImage {
+      naturalWidth = 400;
+      naturalHeight = 300;
+    }
+    // @ts-expect-error test double for HTMLImageElement
+    globalThis.Image = SmallImage;
+
+    const existingImageBytes = 2 * 1024 * 1024;
+
+    const result = await prepareImageForInsert(makeFile("fits.png", "image/png"), existingImageBytes);
+    expect(result.startsWith("data:image/png;base64,")).toBe(true);
   });
 });

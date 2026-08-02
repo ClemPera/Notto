@@ -2,19 +2,37 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
 import type { EditorView } from "@tiptap/pm/view";
+import type { Node as PMNode } from "@tiptap/pm/model";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef } from "react";
-import { prepareImageForInsert, ImageInputError, mimeTypeForFilename, fileUriToPath } from "../../lib/image";
+import {
+  prepareImageForInsert,
+  ImageInputError,
+  mimeTypeForFilename,
+  fileUriToPath,
+  decodedByteSize,
+} from "../../lib/image";
 import { ResizableImage } from "../../lib/resizableImage";
 import { useToasts } from "../../store/toasts";
 import { handleCommandError } from "../../lib/errors";
 import "./NoteEditor.css";
 
+/** Sums the decoded byte size of every embedded (base64) image already in the document. */
+function totalEmbeddedImageBytes(doc: PMNode): number {
+  let total = 0;
+  doc.descendants((node) => {
+    if (node.type.name === "image" && typeof node.attrs.src === "string" && node.attrs.src.startsWith("data:")) {
+      total += decodedByteSize(node.attrs.src);
+    }
+  });
+  return total;
+}
+
 /** Inserts `file` as an image node at `pos` by dispatching directly on the view (used by
  * paste/drop handlers, which only have access to the view, not the editor instance). */
 async function insertImageAtPos(view: EditorView, file: File, pos: number) {
   try {
-    const src = await prepareImageForInsert(file);
+    const src = await prepareImageForInsert(file, totalEmbeddedImageBytes(view.state.doc));
     if (view.isDestroyed) return;
     const node = view.state.schema.nodes.image.create({ src, alt: file.name });
     view.dispatch(view.state.tr.insert(pos, node));
@@ -41,7 +59,7 @@ async function insertImageFromPathAtPos(view: EditorView, path: string, pos: num
     if (view.isDestroyed) return;
     const name = path.split(/[/\\]/).pop() ?? "image";
     const file = new File([new Uint8Array(bytes)], name, { type: mimeType });
-    const src = await prepareImageForInsert(file);
+    const src = await prepareImageForInsert(file, totalEmbeddedImageBytes(view.state.doc));
     if (view.isDestroyed) return;
     const node = view.state.schema.nodes.image.create({ src, alt: name });
     view.dispatch(view.state.tr.insert(pos, node));
@@ -181,7 +199,7 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
     if (!file || !editor) return;
 
     try {
-      const src = await prepareImageForInsert(file);
+      const src = await prepareImageForInsert(file, totalEmbeddedImageBytes(editor.state.doc));
       editor.chain().focus().setImage({ src, alt: file.name }).run();
     } catch (err) {
       const message = err instanceof ImageInputError ? err.message : "Failed to insert image.";
