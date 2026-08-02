@@ -245,6 +245,23 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
     };
   }, []);
 
+  // @tiptap/core's ResizableNodeView only commits a resize on 'mouseup', never 'touchend', so a
+  // touch-drag resize never persists on Android. Nudge it via the mouseup it already listens for,
+  // but only while a resize is in progress so this can't affect unrelated touches.
+  useEffect(() => {
+    const commitTouchResize = () => {
+      if (document.querySelector('[data-resize-state="true"]')) {
+        document.dispatchEvent(new MouseEvent("mouseup"));
+      }
+    };
+    document.addEventListener("touchend", commitTouchResize);
+    document.addEventListener("touchcancel", commitTouchResize);
+    return () => {
+      document.removeEventListener("touchend", commitTouchResize);
+      document.removeEventListener("touchcancel", commitTouchResize);
+    };
+  }, []);
+
   const isDisabled = disabled || !editor;
 
   return (
