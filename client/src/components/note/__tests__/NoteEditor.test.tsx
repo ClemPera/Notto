@@ -2,7 +2,18 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
+import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { readFile } from "@tauri-apps/plugin-fs";
+import { useToasts } from "../../../store/toasts";
+import * as imageLib from "../../../lib/image";
 import NoteEditor from "../NoteEditor";
+
+/** Minimal PNG magic-byte prefix, enough for sniffImageMimeType to recognize it. */
+function pngBytes(payloadSize = 40): Uint8Array {
+  const bytes = new Uint8Array(8 + payloadSize);
+  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  return bytes;
+}
 
 /** Stand-in for HTMLImageElement: jsdom doesn't decode images, so tests control dimensions directly. */
 class SmallFakeImage {
@@ -80,22 +91,23 @@ describe("NoteEditor image insertion", () => {
   afterEach(() => {
     globalThis.Image = originalImage;
     vi.restoreAllMocks();
+    vi.mocked(openFileDialog).mockReset();
+    vi.mocked(readFile).mockReset();
   });
 
-  it("inserts an image via the toolbar button and syncs it back as markdown", async () => {
+  it("inserts an image via the toolbar button (desktop path) and syncs it back as markdown", async () => {
     // @ts-expect-error test double for HTMLImageElement
     globalThis.Image = SmallFakeImage;
     const user = userEvent.setup();
     const onChange = vi.fn();
+    vi.mocked(openFileDialog).mockResolvedValue("/home/clement/Pictures/photo.png");
+    vi.mocked(readFile).mockResolvedValue(pngBytes());
 
     const { container } = render(
       <NoteEditor noteId="note-1" content="" onChange={onChange} disabled={false} />
     );
 
-    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
-    expect(fileInput).toBeTruthy();
-
-    await user.upload(fileInput, makeImageFile("photo.png"));
+    await user.click(screen.getByTitle("Insert image"));
 
     await waitFor(() => {
       expect(container.querySelector(".ProseMirror img")).toBeTruthy();
@@ -113,6 +125,43 @@ describe("NoteEditor image insertion", () => {
     );
     const lastMarkdown = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
     expect(lastMarkdown).toMatch(/!\[photo\.png\]\(data:image\/png;base64,[^)]+\)/);
+  });
+
+  it("inserts an image via the toolbar button when the dialog returns an Android content:// URI", async () => {
+    // @ts-expect-error test double for HTMLImageElement
+    globalThis.Image = SmallFakeImage;
+    const user = userEvent.setup();
+    vi.mocked(openFileDialog).mockResolvedValue(
+      "content://com.android.providers.media.documents/document/image%3A12345"
+    );
+    vi.mocked(readFile).mockResolvedValue(pngBytes());
+
+    const { container } = render(
+      <NoteEditor noteId="note-android" content="" onChange={vi.fn()} disabled={false} />
+    );
+
+    await user.click(screen.getByTitle("Insert image"));
+
+    await waitFor(() => {
+      expect(container.querySelector(".ProseMirror img")).toBeTruthy();
+    });
+    // No filename in the URI to key off, so mime type comes from sniffing the bytes.
+    const img = container.querySelector(".ProseMirror img") as HTMLImageElement;
+    expect(img.getAttribute("src")).toMatch(/^data:image\/png;base64,/);
+  });
+
+  it("does nothing when the file dialog is cancelled", async () => {
+    const user = userEvent.setup();
+    vi.mocked(openFileDialog).mockResolvedValue(null);
+
+    const { container } = render(
+      <NoteEditor noteId="note-cancel" content="" onChange={vi.fn()} disabled={false} />
+    );
+
+    await user.click(screen.getByTitle("Insert image"));
+
+    expect(readFile).not.toHaveBeenCalled();
+    expect(container.querySelector(".ProseMirror img")).toBeNull();
   });
 
   it("inserts an image at the cursor position on paste", async () => {
@@ -156,17 +205,89 @@ describe("NoteEditor image insertion", () => {
     // @ts-expect-error test double for HTMLImageElement
     globalThis.Image = SmallFakeImage;
     const user = userEvent.setup();
+    vi.mocked(openFileDialog).mockResolvedValue("/home/clement/Pictures/photo.png");
+    vi.mocked(readFile).mockResolvedValue(pngBytes());
 
     const { container } = render(
       <NoteEditor noteId="note-4" content="" onChange={vi.fn()} disabled={false} />
     );
 
-    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
-    await user.upload(fileInput, makeImageFile("photo.png"));
+    await user.click(screen.getByTitle("Insert image"));
 
     await waitFor(() => {
       expect(container.querySelectorAll("[data-resize-handle]").length).toBeGreaterThan(0);
     });
+  });
+
+  it("commits an in-progress resize on touchend, since tiptap only listens for mouseup", async () => {
+    render(<NoteEditor noteId="note-touch-resize" content="" onChange={vi.fn()} disabled={false} />);
+
+    const marker = document.createElement("div");
+    marker.setAttribute("data-resize-state", "true");
+    document.body.appendChild(marker);
+
+    const mouseupSpy = vi.fn();
+    document.addEventListener("mouseup", mouseupSpy);
+    document.dispatchEvent(new Event("touchend", { bubbles: true }));
+    document.removeEventListener("mouseup", mouseupSpy);
+    marker.remove();
+
+    expect(mouseupSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not synthesize a mouseup on touchend when no resize is in progress", async () => {
+    render(<NoteEditor noteId="note-no-resize" content="" onChange={vi.fn()} disabled={false} />);
+
+    const mouseupSpy = vi.fn();
+    document.addEventListener("mouseup", mouseupSpy);
+    document.dispatchEvent(new Event("touchend", { bubbles: true }));
+    document.removeEventListener("mouseup", mouseupSpy);
+
+    expect(mouseupSpy).not.toHaveBeenCalled();
+  });
+
+  it("passes the note's existing embedded image size into prepareImageForInsert", async () => {
+    // @ts-expect-error test double for HTMLImageElement
+    globalThis.Image = SmallFakeImage;
+    const user = userEvent.setup();
+    const prepareSpy = vi.spyOn(imageLib, "prepareImageForInsert");
+    vi.mocked(openFileDialog).mockResolvedValue("/home/clement/Pictures/a.png");
+    vi.mocked(readFile).mockResolvedValue(pngBytes());
+
+    // A note that already has one ~1KB embedded image.
+    const existingImageMarkdown = `![a](data:image/png;base64,${"A".repeat(1200)})`;
+    render(
+      <NoteEditor noteId="note-budget" content={existingImageMarkdown} onChange={vi.fn()} disabled={false} />
+    );
+
+    await user.click(screen.getByTitle("Insert image"));
+
+    await waitFor(() => expect(prepareSpy).toHaveBeenCalled());
+    const [, existingImageBytes] = prepareSpy.mock.calls[prepareSpy.mock.calls.length - 1];
+    expect(existingImageBytes).toBeGreaterThan(0);
+  });
+
+  it("shows an error and does not insert when the note is over its size budget", async () => {
+    // @ts-expect-error test double for HTMLImageElement
+    globalThis.Image = SmallFakeImage;
+    const user = userEvent.setup();
+    vi.spyOn(imageLib, "prepareImageForInsert").mockRejectedValue(
+      new imageLib.ImageInputError("This note is close to its size limit.")
+    );
+    vi.mocked(openFileDialog).mockResolvedValue("/home/clement/Pictures/a.png");
+    vi.mocked(readFile).mockResolvedValue(pngBytes());
+
+    useToasts.setState({ toasts: [] });
+    const { container } = render(
+      <NoteEditor noteId="note-over-budget" content="" onChange={vi.fn()} disabled={false} />
+    );
+
+    await user.click(screen.getByTitle("Insert image"));
+
+    await waitFor(() => {
+      expect(useToasts.getState().toasts.some((t) => /size limit/.test(t.message))).toBe(true);
+    });
+    expect(container.querySelector(".ProseMirror img")).toBeNull();
   });
 
   it("reads the file from disk when a drop only carries a file:// path (WebKitGTK)", async () => {

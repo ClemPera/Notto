@@ -17,3 +17,11 @@ vi.mock("@tauri-apps/plugin-log", () => ({
   debug: vi.fn(),
   trace: vi.fn(),
 }));
+
+vi.mock("@tauri-apps/plugin-dialog", () => ({
+  open: vi.fn(),
+}));
+
+vi.mock("@tauri-apps/plugin-fs", () => ({
+  readFile: vi.fn(),
+}));

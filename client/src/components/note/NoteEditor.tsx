@@ -4,12 +4,15 @@ import { Markdown } from "@tiptap/markdown";
 import type { EditorView } from "@tiptap/pm/view";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { invoke } from "@tauri-apps/api/core";
+import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { readFile } from "@tauri-apps/plugin-fs";
 import { useEffect, useRef } from "react";
 import {
   prepareImageForInsert,
   ImageInputError,
   mimeTypeForFilename,
   fileUriToPath,
+  sniffImageMimeType,
   decodedByteSize,
 } from "../../lib/image";
 import { ResizableImage } from "../../lib/resizableImage";
@@ -117,8 +120,6 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
   const isMountedRef = useRef(false);
   const lastContentRef = useRef(content);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -191,16 +192,32 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
     },
   });
 
-  const handleInsertImageClick = () => fileInputRef.current?.click();
-
-  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file || !editor) return;
+  // Uses the dialog + fs plugins (rather than a hidden <input type="file">) since the latter
+  // doesn't reliably trigger Android's native picker in a Tauri webview. This also gives desktop
+  // and Android a single code path: dialog returns a path on desktop and a content:// URI on
+  // Android, and the fs plugin can read either.
+  const handleInsertImageClick = async () => {
+    if (!editor) return;
+    const path = await openFileDialog({
+      multiple: false,
+      filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
+    }).catch(() => null);
+    if (!path || typeof path !== "string") return;
 
     try {
+      const bytes = await readFile(path);
+      const mimeType = sniffImageMimeType(bytes) ?? mimeTypeForFilename(path);
+      if (!mimeType) {
+        useToasts.getState().addToast({
+          kind: "invalid_input",
+          message: "Unsupported image format. Use PNG, JPEG, WebP or GIF.",
+        });
+        return;
+      }
+      const name = decodeURIComponent(path.split(/[/\\]/).pop() ?? "image");
+      const file = new File([bytes], name, { type: mimeType });
       const src = await prepareImageForInsert(file, totalEmbeddedImageBytes(editor.state.doc));
-      editor.chain().focus().setImage({ src, alt: file.name }).run();
+      editor.chain().focus().setImage({ src, alt: name }).run();
     } catch (err) {
       const message = err instanceof ImageInputError ? err.message : "Failed to insert image.";
       useToasts.getState().addToast({ kind: "invalid_input", message });
@@ -384,13 +401,6 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 15l-5-5L5 21" />
           </svg>
         </ToolbarButton>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/png,image/jpeg,image/webp,image/gif"
-          onChange={handleFileSelected}
-          className="hidden"
-        />
 
         <Divider />
 

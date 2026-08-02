@@ -35,6 +35,8 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             // Debug builds (`tauri dev`) use a separate database file so running the dev
             // build alongside an installed release build on the same device doesn't
