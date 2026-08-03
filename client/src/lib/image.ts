@@ -51,14 +51,12 @@ export function fileUriToPath(uri: string): string | null {
   }
 }
 
-// Notes are stored as a single encrypted blob (16MB server MEDIUMBLOB column limit), so the
-// combined size of embedded images plus text needs to stay comfortably under that. A single
-// image is capped well below the column limit so it can never dominate the budget on its own,
-// and the note-wide budget is enforced separately since ciphertext size tracks plaintext size
-// (AES-GCM adds only a 16-byte tag) with no extra base64 layer at rest.
+// Images are stored as their own encrypted row (see imageStore.ts), synced independently of
+// the note's text, so there's no note-wide budget to enforce here anymore. A single image is
+// still capped so the upload stays a reasonable size and the local SQLite cache doesn't grow
+// unbounded.
 const MAX_ORIGINAL_FILE_BYTES = 20 * 1024 * 1024;
 const MAX_EMBEDDED_BYTES = 4 * 1024 * 1024;
-const MAX_NOTE_IMAGE_BUDGET_BYTES = 12 * 1024 * 1024;
 const MAX_IMAGE_DIMENSION = 1280;
 const JPEG_QUALITY = 0.75;
 
@@ -90,17 +88,19 @@ export function decodedByteSize(dataUrl: string): number {
   return Math.floor((base64.length * 3) / 4);
 }
 
+type ResizedImage = { dataUrl: string; mimeType: string };
+
 /**
  * Downscales `dataUrl` through a canvas so its longest side is at most `maxDimension`.
- * GIFs are left untouched to preserve animation. Returns the original data URL unchanged
- * if it's already small enough or if canvas isn't available.
+ * GIFs are left untouched to preserve animation. Returns the original data URL and mime
+ * type unchanged if it's already small enough or if canvas isn't available.
  */
-async function resizeIfNeeded(dataUrl: string, mimeType: string, maxDimension: number): Promise<string> {
+async function resizeIfNeeded(dataUrl: string, mimeType: string, maxDimension: number): Promise<ResizedImage> {
   const img = await loadImageElement(dataUrl);
   const { naturalWidth: width, naturalHeight: height } = img;
 
   if (mimeType === "image/gif" || (width <= maxDimension && height <= maxDimension)) {
-    return dataUrl;
+    return { dataUrl, mimeType };
   }
 
   const scale = maxDimension / Math.max(width, height);
@@ -109,20 +109,33 @@ async function resizeIfNeeded(dataUrl: string, mimeType: string, maxDimension: n
   canvas.height = Math.round(height * scale);
 
   const ctx = canvas.getContext("2d");
-  if (!ctx) return dataUrl;
+  if (!ctx) return { dataUrl, mimeType };
 
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
   const outputType = mimeType === "image/png" ? "image/png" : "image/jpeg";
-  return canvas.toDataURL(outputType, JPEG_QUALITY);
+  return { dataUrl: canvas.toDataURL(outputType, JPEG_QUALITY), mimeType: outputType };
 }
 
+/** Decodes a base64 data URL into its raw bytes. */
+function dataUrlToBytes(dataUrl: string): Uint8Array {
+  const base64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+/** An image ready to hand off to the backend for encrypted storage. */
+export type PreparedImage = { bytes: Uint8Array; mimeType: string };
+
 /**
- * Validates, reads and downscales an image file, returning a data URL ready to embed in a note.
- * `existingImageBytes` is the combined decoded size of images already in the note; passing it
- * keeps the whole note within the server's size limit even when many images are added over time.
+ * Validates, reads and downscales an image file, returning its raw bytes ready to be
+ * encrypted and stored by the backend as its own image row.
  */
-export async function prepareImageForInsert(file: File, existingImageBytes = 0): Promise<string> {
+export async function prepareImageForInsert(file: File): Promise<PreparedImage> {
   if (!isSupportedImageType(file)) {
     throw new ImageInputError("Unsupported image format. Use PNG, JPEG, WebP or GIF.");
   }
@@ -132,16 +145,11 @@ export async function prepareImageForInsert(file: File, existingImageBytes = 0):
 
   const original = await readFileAsDataUrl(file);
   const resized = await resizeIfNeeded(original, file.type, MAX_IMAGE_DIMENSION);
-  const resizedBytes = decodedByteSize(resized);
+  const resizedBytes = decodedByteSize(resized.dataUrl);
 
   if (resizedBytes > MAX_EMBEDDED_BYTES) {
     throw new ImageInputError("Image is too large even after compression. Try a smaller image.");
   }
-  if (existingImageBytes + resizedBytes > MAX_NOTE_IMAGE_BUDGET_BYTES) {
-    throw new ImageInputError(
-      "This note is close to its size limit. Remove or resize an existing image before adding more."
-    );
-  }
 
-  return resized;
+  return { bytes: dataUrlToBytes(resized.dataUrl), mimeType: resized.mimeType };
 }

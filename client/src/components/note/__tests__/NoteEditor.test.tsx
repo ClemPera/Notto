@@ -88,11 +88,22 @@ describe("NoteEditor paste handling", () => {
 describe("NoteEditor image insertion", () => {
   const originalImage = globalThis.Image;
 
+  /** Routes the shared `invoke` mock by command name, since a single test can trigger both
+   * `read_dropped_image` and `insert_image` (and the paste/toolbar paths only the latter). */
+  function stubImageCommands(uuid = "fake-image-uuid") {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "insert_image") return uuid;
+      if (cmd === "read_dropped_image") return Array.from(pngBytes());
+      throw new Error(`unexpected invoke: ${cmd}`);
+    });
+  }
+
   afterEach(() => {
     globalThis.Image = originalImage;
     vi.restoreAllMocks();
     vi.mocked(openFileDialog).mockReset();
     vi.mocked(readFile).mockReset();
+    vi.mocked(invoke).mockReset();
   });
 
   it("inserts an image via the toolbar button (desktop path) and syncs it back as markdown", async () => {
@@ -100,6 +111,7 @@ describe("NoteEditor image insertion", () => {
     globalThis.Image = SmallFakeImage;
     const user = userEvent.setup();
     const onChange = vi.fn();
+    stubImageCommands("uuid-desktop");
     vi.mocked(openFileDialog).mockResolvedValue("/home/clement/Pictures/photo.png");
     vi.mocked(readFile).mockResolvedValue(pngBytes());
 
@@ -110,11 +122,17 @@ describe("NoteEditor image insertion", () => {
     await user.click(screen.getByTitle("Insert image"));
 
     await waitFor(() => {
-      expect(container.querySelector(".ProseMirror img")).toBeTruthy();
+      expect(invoke).toHaveBeenCalledWith("insert_image", {
+        note_id: "note-1",
+        bytes: expect.any(Array),
+      });
     });
 
+    await waitFor(() => {
+      const img = container.querySelector(".ProseMirror img") as HTMLImageElement | null;
+      expect(img?.getAttribute("src")).toMatch(/^blob:/);
+    });
     const img = container.querySelector(".ProseMirror img") as HTMLImageElement;
-    expect(img.getAttribute("src")).toMatch(/^data:image\/png;base64,/);
     expect(img.getAttribute("alt")).toBe("photo.png");
 
     await waitFor(
@@ -124,13 +142,14 @@ describe("NoteEditor image insertion", () => {
       { timeout: 1000 }
     );
     const lastMarkdown = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
-    expect(lastMarkdown).toMatch(/!\[photo\.png\]\(data:image\/png;base64,[^)]+\)/);
+    expect(lastMarkdown).toMatch(/!\[photo\.png\]\(nooto-image:uuid-desktop\)/);
   });
 
   it("inserts an image via the toolbar button when the dialog returns an Android content:// URI", async () => {
     // @ts-expect-error test double for HTMLImageElement
     globalThis.Image = SmallFakeImage;
     const user = userEvent.setup();
+    stubImageCommands();
     vi.mocked(openFileDialog).mockResolvedValue(
       "content://com.android.providers.media.documents/document/image%3A12345"
     );
@@ -143,11 +162,14 @@ describe("NoteEditor image insertion", () => {
     await user.click(screen.getByTitle("Insert image"));
 
     await waitFor(() => {
-      expect(container.querySelector(".ProseMirror img")).toBeTruthy();
+      // No filename in the URI to key off, so mime type comes from sniffing the bytes.
+      const img = container.querySelector(".ProseMirror img") as HTMLImageElement | null;
+      expect(img?.getAttribute("src")).toMatch(/^blob:/);
     });
-    // No filename in the URI to key off, so mime type comes from sniffing the bytes.
-    const img = container.querySelector(".ProseMirror img") as HTMLImageElement;
-    expect(img.getAttribute("src")).toMatch(/^data:image\/png;base64,/);
+    expect(invoke).toHaveBeenCalledWith("insert_image", {
+      note_id: "note-android",
+      bytes: expect.any(Array),
+    });
   });
 
   it("does nothing when the file dialog is cancelled", async () => {
@@ -167,6 +189,7 @@ describe("NoteEditor image insertion", () => {
   it("inserts an image at the cursor position on paste", async () => {
     // @ts-expect-error test double for HTMLImageElement
     globalThis.Image = SmallFakeImage;
+    stubImageCommands();
 
     const onChange = vi.fn();
     const { container } = render(
@@ -190,6 +213,12 @@ describe("NoteEditor image insertion", () => {
     pm.dispatchEvent(pasteEvent);
 
     await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("insert_image", {
+        note_id: "note-2",
+        bytes: expect.any(Array),
+      });
+    });
+    await waitFor(() => {
       expect(container.querySelector(".ProseMirror img")).toBeTruthy();
     });
     const img = container.querySelector(".ProseMirror img") as HTMLImageElement;
@@ -205,6 +234,7 @@ describe("NoteEditor image insertion", () => {
     // @ts-expect-error test double for HTMLImageElement
     globalThis.Image = SmallFakeImage;
     const user = userEvent.setup();
+    stubImageCommands();
     vi.mocked(openFileDialog).mockResolvedValue("/home/clement/Pictures/photo.png");
     vi.mocked(readFile).mockResolvedValue(pngBytes());
 
@@ -246,46 +276,49 @@ describe("NoteEditor image insertion", () => {
     expect(mouseupSpy).not.toHaveBeenCalled();
   });
 
-  it("passes the note's existing embedded image size into prepareImageForInsert", async () => {
-    // @ts-expect-error test double for HTMLImageElement
-    globalThis.Image = SmallFakeImage;
-    const user = userEvent.setup();
-    const prepareSpy = vi.spyOn(imageLib, "prepareImageForInsert");
-    vi.mocked(openFileDialog).mockResolvedValue("/home/clement/Pictures/a.png");
-    vi.mocked(readFile).mockResolvedValue(pngBytes());
-
-    // A note that already has one ~1KB embedded image.
-    const existingImageMarkdown = `![a](data:image/png;base64,${"A".repeat(1200)})`;
-    render(
-      <NoteEditor noteId="note-budget" content={existingImageMarkdown} onChange={vi.fn()} disabled={false} />
-    );
-
-    await user.click(screen.getByTitle("Insert image"));
-
-    await waitFor(() => expect(prepareSpy).toHaveBeenCalled());
-    const [, existingImageBytes] = prepareSpy.mock.calls[prepareSpy.mock.calls.length - 1];
-    expect(existingImageBytes).toBeGreaterThan(0);
-  });
-
-  it("shows an error and does not insert when the note is over its size budget", async () => {
+  it("shows an error and does not insert when prepareImageForInsert rejects", async () => {
     // @ts-expect-error test double for HTMLImageElement
     globalThis.Image = SmallFakeImage;
     const user = userEvent.setup();
     vi.spyOn(imageLib, "prepareImageForInsert").mockRejectedValue(
-      new imageLib.ImageInputError("This note is close to its size limit.")
+      new imageLib.ImageInputError("Image is too large even after compression.")
     );
     vi.mocked(openFileDialog).mockResolvedValue("/home/clement/Pictures/a.png");
     vi.mocked(readFile).mockResolvedValue(pngBytes());
 
     useToasts.setState({ toasts: [] });
     const { container } = render(
-      <NoteEditor noteId="note-over-budget" content="" onChange={vi.fn()} disabled={false} />
+      <NoteEditor noteId="note-too-large" content="" onChange={vi.fn()} disabled={false} />
     );
 
     await user.click(screen.getByTitle("Insert image"));
 
     await waitFor(() => {
-      expect(useToasts.getState().toasts.some((t) => /size limit/.test(t.message))).toBe(true);
+      expect(useToasts.getState().toasts.some((t) => /too large/.test(t.message))).toBe(true);
+    });
+    expect(invoke).not.toHaveBeenCalledWith("insert_image", expect.anything());
+    expect(container.querySelector(".ProseMirror img")).toBeNull();
+  });
+
+  it("shows an error and does not insert an image node when insert_image fails", async () => {
+    // @ts-expect-error test double for HTMLImageElement
+    globalThis.Image = SmallFakeImage;
+    const user = userEvent.setup();
+    vi.mocked(invoke).mockRejectedValue(new Error("No workspace is loaded"));
+    vi.mocked(openFileDialog).mockResolvedValue("/home/clement/Pictures/a.png");
+    vi.mocked(readFile).mockResolvedValue(pngBytes());
+
+    useToasts.setState({ toasts: [] });
+    const { container } = render(
+      <NoteEditor noteId="note-insert-fails" content="" onChange={vi.fn()} disabled={false} />
+    );
+
+    await user.click(screen.getByTitle("Insert image"));
+
+    await waitFor(() => {
+      expect(useToasts.getState().toasts.some((t) => /Failed to insert image/.test(t.message))).toBe(
+        true
+      );
     });
     expect(container.querySelector(".ProseMirror img")).toBeNull();
   });
@@ -293,7 +326,7 @@ describe("NoteEditor image insertion", () => {
   it("reads the file from disk when a drop only carries a file:// path (WebKitGTK)", async () => {
     // @ts-expect-error test double for HTMLImageElement
     globalThis.Image = SmallFakeImage;
-    vi.mocked(invoke).mockResolvedValue(Array.from(new Uint8Array([1, 2, 3, 4])));
+    stubImageCommands();
     document.elementFromPoint = vi.fn(() => null);
 
     const { container } = render(
@@ -322,6 +355,10 @@ describe("NoteEditor image insertion", () => {
 
     expect(invoke).toHaveBeenCalledWith("read_dropped_image", {
       path: "/home/clement/Downloads/3.png",
+    });
+    expect(invoke).toHaveBeenCalledWith("insert_image", {
+      note_id: "note-5",
+      bytes: expect.any(Array),
     });
     const img = container.querySelector(".ProseMirror img") as HTMLImageElement;
     expect(img.getAttribute("alt")).toBe("3.png");

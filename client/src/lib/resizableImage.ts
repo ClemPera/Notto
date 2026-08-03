@@ -1,4 +1,23 @@
+import { ResizableNodeView } from "@tiptap/core";
 import Image from "@tiptap/extension-image";
+import { IMAGE_URI_PREFIX, resolveImageSrc } from "./imageStore";
+
+/** Sets `el.src`, resolving a `nooto-image:<uuid>` reference to a blob URL first if needed. */
+function setImageSrc(el: HTMLImageElement, src: string): void {
+  if (!src.startsWith(IMAGE_URI_PREFIX)) {
+    el.src = src;
+    return;
+  }
+
+  const uuid = src.slice(IMAGE_URI_PREFIX.length);
+  resolveImageSrc(uuid)
+    .then((blobUrl) => {
+      el.src = blobUrl;
+    })
+    .catch(() => {
+      el.alt = el.alt || "Failed to load image";
+    });
+}
 
 /**
  * Plain markdown image syntax (`![alt](src)`) has no width/height field, so the stock
@@ -30,5 +49,71 @@ export const ResizableImage = Image.extend({
       .filter(Boolean)
       .join(" ");
     return `<img ${attrs} />`;
+  },
+
+  // Images are stored server-side and referenced by a `nooto-image:<uuid>` src rather than
+  // embedded inline, so the node view resolves that reference to a real (blob:) URL before
+  // display. Otherwise identical to the base extension's resizable node view.
+  addNodeView() {
+    if (!this.options.resize || !this.options.resize.enabled || typeof document === "undefined") {
+      return null;
+    }
+
+    const { directions, minWidth, minHeight, alwaysPreserveAspectRatio } = this.options.resize;
+
+    return ({ node, getPos, HTMLAttributes, editor }) => {
+      const el = document.createElement("img");
+
+      Object.entries(HTMLAttributes).forEach(([key, value]) => {
+        if (value != null && key !== "width" && key !== "height" && key !== "src") {
+          el.setAttribute(key, value);
+        }
+      });
+
+      setImageSrc(el, HTMLAttributes.src);
+
+      const nodeView = new ResizableNodeView({
+        element: el,
+        editor,
+        node,
+        getPos,
+        onResize: (width, height) => {
+          el.style.width = `${width}px`;
+          el.style.height = `${height}px`;
+        },
+        onCommit: (width, height) => {
+          const pos = getPos();
+          if (pos === undefined) return;
+
+          this.editor
+            .chain()
+            .setNodeSelection(pos)
+            .updateAttributes(this.name, { width, height })
+            .run();
+        },
+        onUpdate: (updatedNode) => {
+          if (updatedNode.type !== node.type) return false;
+          setImageSrc(el, updatedNode.attrs.src);
+          return true;
+        },
+        options: {
+          directions,
+          min: { width: minWidth, height: minHeight },
+          preserveAspectRatio: alwaysPreserveAspectRatio === true,
+        },
+      });
+
+      const dom = nodeView.dom as HTMLElement;
+
+      // Hidden until the image loads, so the node view mounts with the correct dimensions.
+      dom.style.visibility = "hidden";
+      dom.style.pointerEvents = "none";
+      el.onload = () => {
+        dom.style.visibility = "";
+        dom.style.pointerEvents = "";
+      };
+
+      return nodeView;
+    };
   },
 });
