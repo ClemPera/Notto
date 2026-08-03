@@ -9,7 +9,7 @@ use tauri_plugin_log::log::{debug, error, info};
 use crate::{
     AppState, commands,
     crypt::{self, NoteData},
-    db::{self, schema::{Note, Workspace}},
+    db::{self, schema::{Image, Note, Workspace}},
     sync,
 };
 
@@ -71,6 +71,20 @@ pub async fn run(handle: AppHandle) {
                                 }
                             }
                         }
+                        Err(e) => {
+                            if e.downcast_ref::<reqwest::Error>().map_or(false, |e| e.is_connect()) {
+                                emit(&handle, "sync-status", SyncStatus::Offline);
+                                info!("Couldn't connect to server");
+                            } else {
+                                emit(&handle, "sync-status", SyncStatus::Error);
+                                error!("{e:#}");
+                            }
+                            break 'sync;
+                        }
+                    }
+
+                    match send_latest_images(&state, workspace.clone()).await {
+                        Ok(()) => {}
                         Err(e) => {
                             if e.downcast_ref::<reqwest::Error>().map_or(false, |e| e.is_connect()) {
                                 emit(&handle, "sync-status", SyncStatus::Offline);
@@ -231,6 +245,45 @@ pub async fn send_latest_notes(
     }
 
     Ok(max_server_received_at)
+}
+
+/// Uploads any local unsynced images, one at a time. Images are write-once and don't
+/// participate in the note's timestamp-based conflict resolution, so this only ever pushes.
+pub async fn send_latest_images(state: &Mutex<AppState>, workspace: Workspace) -> Result<()> {
+    let unsynced_images: Vec<Image> = {
+        let state = state.lock().await;
+        let conn = state.database.lock().await;
+
+        Image::select_unsynced(&conn, workspace.id).context("Failed to read images from database")?
+    };
+
+    if unsynced_images.is_empty() {
+        return Ok(());
+    }
+
+    debug!("sending unsynced images...");
+
+    let username = workspace.username.clone().context("Workspace has no username")?;
+    let token = workspace.token.clone().context("Workspace has no token")?;
+    let instance = workspace.instance.clone().context("Workspace has no instance")?;
+
+    for image in unsynced_images {
+        let uuid = image.uuid.clone();
+
+        let sent_image = shared::SendImage {
+            username: username.clone(),
+            token: token.clone(),
+            image: image.into(),
+        };
+
+        sync::operations::send_image(sent_image, instance.clone()).await?;
+
+        let state = state.lock().await;
+        let conn = state.database.lock().await;
+        Image::mark_synched(&conn, uuid).context("Failed to mark image as synched")?;
+    }
+
+    Ok(())
 }
 
 /// Advances `last_sync_at` to `timestamp + 1` in both the in-memory state and the database.

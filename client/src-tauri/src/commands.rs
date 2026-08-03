@@ -702,6 +702,84 @@ pub async fn handle_conflict(
     Ok(())
 }
 
+/// Encrypts `bytes` and stores them locally as an unsynced image linked to `note_id`.
+/// Returns the new image's UUID, which the frontend embeds in the note's markdown as a
+/// `nooto-image:<uuid>` reference instead of the raw bytes.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn insert_image(
+    state: State<'_, Mutex<AppState>>,
+    note_id: String,
+    bytes: Vec<u8>,
+) -> Result<String, CommandError> {
+    let state = state.lock().await;
+    let conn = state.database.lock().await;
+
+    let workspace = state
+        .workspace
+        .clone()
+        .ok_or_else(|| CommandError::unauthorized("No workspace is loaded"))?;
+
+    let uuid = db::operations::insert_image(
+        &conn,
+        workspace.id,
+        note_id,
+        &bytes,
+        workspace.master_encryption_key,
+    )?;
+
+    Ok(uuid)
+}
+
+/// Returns an image's decrypted bytes. Checks the local cache first, falling back to the
+/// server (and caching the result locally) if the image was synced from another device.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn get_image(
+    state: State<'_, Mutex<AppState>>,
+    uuid: String,
+) -> Result<Vec<u8>, CommandError> {
+    let (workspace, local) = {
+        let state = state.lock().await;
+        let conn = state.database.lock().await;
+
+        let workspace = state
+            .workspace
+            .clone()
+            .ok_or_else(|| CommandError::unauthorized("No workspace is loaded"))?;
+
+        let local = db::operations::get_local_image(&conn, uuid.clone(), workspace.master_encryption_key)?;
+
+        (workspace, local)
+    };
+
+    if let Some(plaintext) = local {
+        return Ok(plaintext);
+    }
+
+    let username = workspace
+        .username
+        .clone()
+        .ok_or_else(|| CommandError::unauthorized("Workspace is not connected to a server"))?;
+    let token = workspace
+        .token
+        .clone()
+        .ok_or_else(|| CommandError::unauthorized("Workspace is not connected to a server"))?;
+    let instance = workspace
+        .instance
+        .clone()
+        .ok_or_else(|| CommandError::unauthorized("Workspace is not connected to a server"))?;
+
+    let params = shared::SelectImageParams { username, token: hex::encode(token), uuid: uuid.clone() };
+    let image = sync::operations::select_image(params, instance).await?;
+
+    let plaintext = crypt::decrypt_data(&image.content, &image.nonce, &workspace.master_encryption_key)?;
+
+    let state = state.lock().await;
+    let conn = state.database.lock().await;
+    db::operations::cache_remote_image(&conn, workspace.id, image)?;
+
+    Ok(plaintext)
+}
+
 const MAX_DROPPED_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
 
 /// Reads and size-checks a local image file. Kept separate from the command wrapper so it's testable without a Tauri runtime.

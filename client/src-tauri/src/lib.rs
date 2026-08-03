@@ -84,7 +84,9 @@ pub fn run() {
             commands::create_folder,
             commands::get_latest_note_id,
             commands::handle_conflict,
-            commands::read_dropped_image
+            commands::read_dropped_image,
+            commands::insert_image,
+            commands::get_image
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

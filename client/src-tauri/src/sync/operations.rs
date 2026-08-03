@@ -1,5 +1,8 @@
 use anyhow::{Context, Result};
-use shared::{LoginRequestParams, Note, SelectNoteParams, SelectNotesParams, SentNotes, User};
+use shared::{
+    Image, LoginRequestParams, Note, SelectImageParams, SelectNoteParams, SelectNotesParams,
+    SendImage, SentNotes, User,
+};
 
 /// `POST /notes` — uploads a batch of notes and returns per-note results (Ok or Conflict).
 pub async fn send_notes(notes: SentNotes, instance: String) -> Result<Vec<shared::SentNotesResult>> {
@@ -51,6 +54,41 @@ pub async fn select_note(params: SelectNoteParams, instance: String) -> Result<N
         .context("Could not reach the server")?
         .error_for_status()
         .context("Server rejected the note request")?;
+
+    response
+        .json()
+        .await
+        .context("Failed to parse server response")
+}
+
+/// `POST /image` — uploads a single encrypted image.
+pub async fn send_image(image: SendImage, instance: String) -> Result<()> {
+    let client = reqwest::Client::new();
+
+    client
+        .post(instance + "/image")
+        .json(&image)
+        .send()
+        .await
+        .context("Could not reach the server")?
+        .error_for_status()
+        .context("Server rejected the image")?;
+
+    Ok(())
+}
+
+/// `GET /image` — fetches a single image by UUID.
+pub async fn select_image(params: SelectImageParams, instance: String) -> Result<Image> {
+    let client = reqwest::Client::new();
+
+    let response = client
+        .get(instance + "/image")
+        .query(&params)
+        .send()
+        .await
+        .context("Could not reach the server")?
+        .error_for_status()
+        .context("Server rejected the image request")?;
 
     response
         .json()
