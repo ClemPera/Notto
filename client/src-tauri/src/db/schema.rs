@@ -247,6 +247,32 @@ impl Image {
         Ok(())
     }
 
+    /// Returns every image linked to `note_uuid`, regardless of sync status. This is the
+    /// note's attachment library - it can include images no longer referenced anywhere in
+    /// the note's text, since removing an image from the text doesn't delete its data.
+    pub fn select_by_note(conn: &Connection, note_uuid: String) -> Result<Vec<Self>> {
+        let mut stmt = conn
+            .prepare("SELECT * FROM image WHERE note_uuid = ?")
+            .context("Failed to prepare image query")?;
+
+        let images = stmt
+            .query_map([note_uuid], |row| {
+                Ok(Image {
+                    uuid: row.get(0)?,
+                    note_uuid: row.get(1)?,
+                    id_workspace: row.get(2)?,
+                    content: row.get(3)?,
+                    nonce: row.get(4)?,
+                    synched: row.get(5)?,
+                })
+            })
+            .context("Failed to query images")?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .context("Failed to read image rows")?;
+
+        Ok(images)
+    }
+
     /// Returns all unsynced images belonging to `id_workspace`, oldest first.
     pub fn select_unsynced(conn: &Connection, id_workspace: u32) -> Result<Vec<Self>> {
         let mut stmt = conn
@@ -792,6 +818,43 @@ mod tests {
         let conn = open_db();
         let result = Image::select(&conn, "nonexistent".to_string()).unwrap();
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn image_select_by_note_returns_only_that_notes_images() {
+        let conn = open_db();
+        let ws = sample_workspace("ws1");
+        ws.insert(&conn).unwrap();
+        let ws_id = conn.last_insert_rowid() as u32;
+
+        let mut image_a = sample_image(ws_id);
+        image_a.uuid = "image-a".to_string();
+        image_a.note_uuid = "note-a".to_string();
+        image_a.insert(&conn).unwrap();
+
+        let mut image_b = sample_image(ws_id);
+        image_b.uuid = "image-b".to_string();
+        image_b.note_uuid = "note-b".to_string();
+        image_b.insert(&conn).unwrap();
+
+        let result = Image::select_by_note(&conn, "note-a".to_string()).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].uuid, "image-a");
+    }
+
+    #[test]
+    fn image_select_by_note_includes_synched_images() {
+        let conn = open_db();
+        let ws = sample_workspace("ws1");
+        ws.insert(&conn).unwrap();
+        let ws_id = conn.last_insert_rowid() as u32;
+
+        let mut image = sample_image(ws_id);
+        image.synched = true;
+        image.insert(&conn).unwrap();
+
+        let result = Image::select_by_note(&conn, image.note_uuid).unwrap();
+        assert_eq!(result.len(), 1);
     }
 
     #[test]

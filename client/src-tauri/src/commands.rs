@@ -702,6 +702,21 @@ pub async fn handle_conflict(
     Ok(())
 }
 
+/// Returns the UUIDs of every image belonging to `note_id` - the note's attachment
+/// library, which can include images no longer referenced in the note's text.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn list_note_images(
+    state: State<'_, Mutex<AppState>>,
+    note_id: String,
+) -> Result<Vec<String>, CommandError> {
+    let state = state.lock().await;
+    let conn = state.database.lock().await;
+
+    let images = db::schema::Image::select_by_note(&conn, note_id)?;
+
+    Ok(images.into_iter().map(|image| image.uuid).collect())
+}
+
 /// Encrypts `bytes` and stores them locally as an unsynced image linked to `note_id`.
 /// Returns the new image's UUID, which the frontend embeds in the note's markdown as a
 /// `nooto-image:<uuid>` reference instead of the raw bytes.

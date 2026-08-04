@@ -87,7 +87,8 @@ pub fn run() {
             commands::read_dropped_image,
             commands::insert_image,
             commands::get_image,
-            commands::delete_image
+            commands::delete_image,
+            commands::list_note_images
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
