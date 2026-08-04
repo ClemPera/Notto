@@ -99,6 +99,7 @@ describe("NoteEditor image insertion", () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "insert_image") return uuid;
       if (cmd === "read_dropped_image") return Array.from(pngBytes());
+      if (cmd === "list_note_images") return [];
       throw new Error(`unexpected invoke: ${cmd}`);
     });
   }
@@ -399,20 +400,28 @@ describe("NoteEditor list indent/outdent buttons", () => {
   });
 });
 
-describe("NoteEditor attachments list", () => {
+describe("NoteEditor attachments library", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.mocked(invoke).mockReset();
   });
 
+  /** Routes the shared `invoke` mock by command name. `listByNote` simulates the backend's
+   * per-note attachment library (keyed by note_id), independent of the note's text content. */
   function stubImageCommands({
     uuid = "fake-image-uuid",
+    listByNote = {},
     deleteImpl,
-  }: { uuid?: string; deleteImpl?: () => Promise<void> } = {}) {
-    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+  }: {
+    uuid?: string;
+    listByNote?: Record<string, string[]>;
+    deleteImpl?: () => Promise<void>;
+  } = {}) {
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: any) => {
       if (cmd === "insert_image") return uuid;
       if (cmd === "get_image") return Array.from(pngBytes());
       if (cmd === "delete_image") return deleteImpl ? deleteImpl() : undefined;
+      if (cmd === "list_note_images") return listByNote[args?.note_id as string] ?? [];
       throw new Error(`unexpected invoke: ${cmd}`);
     });
   }
@@ -426,12 +435,12 @@ describe("NoteEditor attachments list", () => {
     });
   });
 
-  it("lists an image already present in the note's content on load", async () => {
-    stubImageCommands({ uuid: "existing-uuid" });
+  it("loads the note's attachment library from the backend, independent of the text", async () => {
+    stubImageCommands({ listByNote: { "note-attach-existing": ["existing-uuid"] } });
     render(
       <NoteEditor
         noteId="note-attach-existing"
-        content="![a photo](nooto-image:existing-uuid)"
+        content="plain text, no image markdown in here at all"
         onChange={vi.fn()}
         disabled={false}
       />
@@ -460,11 +469,31 @@ describe("NoteEditor attachments list", () => {
   });
 
   it("updates the attachments list when switching to a different note", async () => {
-    stubImageCommands({ uuid: "note-a-uuid" });
+    stubImageCommands({ listByNote: { "note-a": ["note-a-uuid"], "note-b": [] } });
     const { rerender } = render(
+      <NoteEditor noteId="note-a" content="text" onChange={vi.fn()} disabled={false} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("1 attachment")).toBeTruthy();
+    });
+
+    rerender(<NoteEditor noteId="note-b" content="text" onChange={vi.fn()} disabled={false} />);
+
+    await waitFor(() => {
+      expect(screen.queryByTitle("Remove attachment")).toBeNull();
+    });
+  });
+
+  it("keeps an attachment listed even after its reference is removed straight from the text", async () => {
+    // Removing the image from the note (e.g. selecting and deleting it) shouldn't delete the
+    // underlying data - that's what the explicit delete button is for. The library should
+    // still offer it for re-insertion.
+    stubImageCommands({ listByNote: { "note-attach-keep": ["kept-uuid"] } });
+    render(
       <NoteEditor
-        noteId="note-a"
-        content="![a](nooto-image:note-a-uuid)"
+        noteId="note-attach-keep"
+        content="![a](nooto-image:kept-uuid)"
         onChange={vi.fn()}
         disabled={false}
       />
@@ -474,11 +503,70 @@ describe("NoteEditor attachments list", () => {
       expect(screen.getByText("1 attachment")).toBeTruthy();
     });
 
-    rerender(<NoteEditor noteId="note-b" content="no images here" onChange={vi.fn()} disabled={false} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByTitle("Bold (Ctrl+B)")); // just to focus the editor via toolbar
+    await user.keyboard("{Control>}a{/Control}{Backspace}"); // select all, delete
 
     await waitFor(() => {
-      expect(screen.queryByTitle("Remove attachment")).toBeNull();
+      expect(screen.getByText("1 attachment")).toBeTruthy();
     });
+  });
+
+  it("inserts an attachment into the note when clicked/tapped", async () => {
+    stubImageCommands({ listByNote: { "note-attach-tap": ["tap-uuid"] } });
+    const { container } = render(
+      <NoteEditor noteId="note-attach-tap" content="" onChange={vi.fn()} disabled={false} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTitle("Tap to insert into the note, or drag it into place")).toBeTruthy();
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTitle("Tap to insert into the note, or drag it into place"));
+
+    await waitFor(() => {
+      expect(container.querySelector(".ProseMirror img")).toBeTruthy();
+    });
+  });
+
+  it("inserts an attachment into the note when dragged in", async () => {
+    stubImageCommands({ listByNote: { "note-attach-drag": ["drag-uuid"] } });
+    const { container } = render(
+      <NoteEditor noteId="note-attach-drag" content="" onChange={vi.fn()} disabled={false} />
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector(".ProseMirror")).toBeTruthy();
+    });
+    const pm = container.querySelector(".ProseMirror") as HTMLElement;
+
+    const dataTransfer = {
+      files: [],
+      getData: (type: string) => (type === "application/x-nooto-image-uuid" ? "drag-uuid" : ""),
+    };
+    const dropEvent = new Event("drop", { bubbles: true, cancelable: true });
+    Object.defineProperty(dropEvent, "dataTransfer", { value: dataTransfer });
+    Object.defineProperty(dropEvent, "clientX", { value: 0 });
+    Object.defineProperty(dropEvent, "clientY", { value: 0 });
+    pm.dispatchEvent(dropEvent);
+
+    await waitFor(() => {
+      const img = container.querySelector(".ProseMirror img") as HTMLImageElement | null;
+      expect(img?.getAttribute("src")).toMatch(/^blob:/);
+    });
+  });
+
+  it("shows the delete button without needing hover (mobile-friendly)", async () => {
+    stubImageCommands({ listByNote: { "note-attach-visible": ["vis-uuid"] } });
+    render(
+      <NoteEditor noteId="note-attach-visible" content="" onChange={vi.fn()} disabled={false} />
+    );
+
+    const deleteButton = await screen.findByTitle("Remove attachment");
+    // The old hover-reveal implementation kept the button transparent until :hover; it should
+    // now always be visibly styled.
+    expect(deleteButton.className).not.toMatch(/text-transparent/);
   });
 
   it("deletes the stored image first, then removes it from the note and the list", async () => {

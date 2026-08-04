@@ -1,6 +1,5 @@
 import { useEditor, EditorContent } from "@tiptap/react";
 import type { Editor } from "@tiptap/core";
-import type { Node as PMNode } from "@tiptap/pm/model";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
 import type { EditorView } from "@tiptap/pm/view";
@@ -21,32 +20,25 @@ import { useToasts } from "../../store/toasts";
 import { handleCommandError } from "../../lib/errors";
 import "./NoteEditor.css";
 
+/** MIME type used to carry an attachment's UUID when dragging it from the attachments
+ * strip into the note - distinguishes an internal re-insert from an OS/browser file drop. */
+const ATTACHMENT_DRAG_MIME = "application/x-nooto-image-uuid";
+
 /**
  * Hands prepared image bytes to the backend for encrypted storage, then registers a blob
  * URL locally so the editor can display it right away without waiting on a `get_image`
  * round trip. Returns the `nooto-image:<uuid>` reference to embed in the note's markdown.
  */
-async function storeImageAndGetSrc(noteId: string, bytes: Uint8Array, mimeType: string): Promise<string> {
+async function storeImageAndGetSrc(
+  noteId: string,
+  bytes: Uint8Array,
+  mimeType: string,
+  onStored: (uuid: string) => void
+): Promise<string> {
   const uuid = await invoke<string>("insert_image", { note_id: noteId, bytes: Array.from(bytes) });
   registerLocalImage(uuid, URL.createObjectURL(new Blob([bytes], { type: mimeType })));
+  onStored(uuid);
   return `${IMAGE_URI_PREFIX}${uuid}`;
-}
-
-/** Collects the UUID of every stored image referenced in `doc`, in document order, deduped
- * (the same image can appear more than once if a node was copy-pasted within the editor). */
-function collectAttachmentUuids(doc: PMNode): string[] {
-  const seen = new Set<string>();
-  const uuids: string[] = [];
-  doc.descendants((node) => {
-    const src = node.attrs.src as string | undefined;
-    if (node.type.name !== "image" || !src?.startsWith(IMAGE_URI_PREFIX)) return;
-    const uuid = src.slice(IMAGE_URI_PREFIX.length);
-    if (!seen.has(uuid)) {
-      seen.add(uuid);
-      uuids.push(uuid);
-    }
-  });
-  return uuids;
 }
 
 /** Removes every image node referencing `uuid` from the editor's document (there's usually
@@ -68,11 +60,17 @@ function removeAttachmentFromDoc(editor: Editor, uuid: string) {
 
 /** Inserts `file` as an image node at `pos` by dispatching directly on the view (used by
  * paste/drop handlers, which only have access to the view, not the editor instance). */
-async function insertImageAtPos(view: EditorView, noteId: string, file: File, pos: number) {
+async function insertImageAtPos(
+  view: EditorView,
+  noteId: string,
+  file: File,
+  pos: number,
+  onStored: (uuid: string) => void
+) {
   try {
     const { bytes, mimeType } = await prepareImageForInsert(file);
     if (view.isDestroyed) return;
-    const src = await storeImageAndGetSrc(noteId, bytes, mimeType);
+    const src = await storeImageAndGetSrc(noteId, bytes, mimeType, onStored);
     if (view.isDestroyed) return;
     const node = view.state.schema.nodes.image.create({ src, alt: file.name });
     view.dispatch(view.state.tr.insert(pos, node));
@@ -84,7 +82,13 @@ async function insertImageAtPos(view: EditorView, noteId: string, file: File, po
 
 /** Same as insertImageAtPos, but for OS file drops where WebKitGTK gives us only a
  * `file://` path in dataTransfer, not a File — the bytes are read via a Tauri command. */
-async function insertImageFromPathAtPos(view: EditorView, noteId: string, path: string, pos: number) {
+async function insertImageFromPathAtPos(
+  view: EditorView,
+  noteId: string,
+  path: string,
+  pos: number,
+  onStored: (uuid: string) => void
+) {
   const mimeType = mimeTypeForFilename(path);
   if (!mimeType) {
     useToasts.getState().addToast({
@@ -101,7 +105,7 @@ async function insertImageFromPathAtPos(view: EditorView, noteId: string, path: 
     const file = new File([new Uint8Array(droppedBytes)], name, { type: mimeType });
     const prepared = await prepareImageForInsert(file);
     if (view.isDestroyed) return;
-    const src = await storeImageAndGetSrc(noteId, prepared.bytes, prepared.mimeType);
+    const src = await storeImageAndGetSrc(noteId, prepared.bytes, prepared.mimeType, onStored);
     if (view.isDestroyed) return;
     const node = view.state.schema.nodes.image.create({ src, alt: name });
     view.dispatch(view.state.tr.insert(pos, node));
@@ -156,10 +160,11 @@ function Divider() {
 type AttachmentThumbnailProps = {
   uuid: string;
   deleting: boolean;
+  onInsert: () => void;
   onDelete: () => void;
 };
 
-function AttachmentThumbnail({ uuid, deleting, onDelete }: AttachmentThumbnailProps) {
+function AttachmentThumbnail({ uuid, deleting, onInsert, onDelete }: AttachmentThumbnailProps) {
   const [src, setSrc] = useState<string | null>(null);
 
   useEffect(() => {
@@ -175,19 +180,41 @@ function AttachmentThumbnail({ uuid, deleting, onDelete }: AttachmentThumbnailPr
   }, [uuid]);
 
   return (
-    <div className="relative shrink-0 w-10 h-10 rounded border border-slate-700 bg-slate-800 overflow-hidden">
-      {src ? (
-        <img src={src} alt="" className="w-full h-full object-cover" />
-      ) : (
-        <div className="w-full h-full animate-pulse bg-slate-700" />
-      )}
+    <div className="relative shrink-0">
       <button
-        onClick={onDelete}
+        onClick={onInsert}
+        disabled={deleting}
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.setData(ATTACHMENT_DRAG_MIME, uuid);
+          e.dataTransfer.effectAllowed = "copy";
+        }}
+        title="Tap to insert into the note, or drag it into place"
+        className="block w-14 h-14 rounded border border-slate-700 bg-slate-800 overflow-hidden
+          hover:border-slate-500 focus:border-slate-500 focus:outline-none disabled:opacity-50"
+      >
+        {src ? (
+          <img
+            src={src}
+            alt=""
+            draggable={false}
+            className="w-full h-full object-cover pointer-events-none"
+          />
+        ) : (
+          <div className="w-full h-full animate-pulse bg-slate-700" />
+        )}
+      </button>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete();
+        }}
         disabled={deleting}
         title="Remove attachment"
-        className="absolute inset-0 flex items-center justify-center text-xs text-transparent bg-slate-900/0
-          transition-colors hover:text-white hover:bg-slate-900/70 focus:text-white focus:bg-slate-900/70
-          focus:outline-none disabled:cursor-wait"
+        className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-slate-700 border border-slate-600
+          flex items-center justify-center text-[10px] leading-none text-slate-300
+          hover:bg-red-600 hover:text-white focus:bg-red-600 focus:text-white focus:outline-none
+          disabled:opacity-50 disabled:cursor-wait"
       >
         {deleting ? "…" : "✕"}
       </button>
@@ -203,6 +230,27 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
   const [attachmentUuids, setAttachmentUuids] = useState<string[]>([]);
   const [deletingAttachment, setDeletingAttachment] = useState<string | null>(null);
 
+  // The attachment library is the note's own thing, not derived from the doc - it can
+  // include images no longer referenced in the text (removed from the note but not
+  // deleted). Loaded fresh on mount and whenever we switch to a different note.
+  useEffect(() => {
+    let cancelled = false;
+    invoke<string[]>("list_note_images", { note_id: noteId })
+      .then((uuids) => {
+        if (!cancelled) setAttachmentUuids(uuids ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setAttachmentUuids([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [noteId]);
+
+  const handleImageStored = (uuid: string) => {
+    setAttachmentUuids((prev) => (prev.includes(uuid) ? prev : [...prev, uuid]));
+  };
+
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -216,12 +264,7 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
     content,
     contentType: "markdown",
     editable: !disabled,
-    onCreate: ({ editor }) => {
-      setAttachmentUuids(collectAttachmentUuids(editor.state.doc));
-    },
     onUpdate: ({ editor }) => {
-      setAttachmentUuids(collectAttachmentUuids(editor.state.doc));
-
       if (isSwitchingRef.current) return;
       const markdown = editor.getMarkdown();
       if (markdown === lastContentRef.current) return;
@@ -241,7 +284,7 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
           ?.getAsFile();
         if (imageFile) {
           event.preventDefault();
-          insertImageAtPos(view, noteId, imageFile, view.state.selection.from);
+          insertImageAtPos(view, noteId, imageFile, view.state.selection.from, handleImageStored);
           return true;
         }
 
@@ -258,12 +301,25 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
           view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos ??
           view.state.selection.from;
 
+        // Dragged from our own attachments strip - the image already exists, just place a
+        // new reference to it, no re-upload needed.
+        const attachmentUuid = event.dataTransfer?.getData(ATTACHMENT_DRAG_MIME);
+        if (attachmentUuid) {
+          event.preventDefault();
+          const node = view.state.schema.nodes.image.create({
+            src: `${IMAGE_URI_PREFIX}${attachmentUuid}`,
+            alt: "",
+          });
+          view.dispatch(view.state.tr.insert(pos, node));
+          return true;
+        }
+
         const file = Array.from(event.dataTransfer?.files ?? []).find((f) =>
           f.type.startsWith("image/")
         );
         if (file) {
           event.preventDefault();
-          insertImageAtPos(view, noteId, file, pos);
+          insertImageAtPos(view, noteId, file, pos, handleImageStored);
           return true;
         }
 
@@ -274,7 +330,7 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
         if (!path) return false;
 
         event.preventDefault();
-        insertImageFromPathAtPos(view, noteId, path, pos);
+        insertImageFromPathAtPos(view, noteId, path, pos, handleImageStored);
         return true;
       },
     },
@@ -305,12 +361,19 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
       const name = decodeURIComponent(path.split(/[/\\]/).pop() ?? "image");
       const file = new File([bytes], name, { type: mimeType });
       const prepared = await prepareImageForInsert(file);
-      const src = await storeImageAndGetSrc(noteId, prepared.bytes, prepared.mimeType);
+      const src = await storeImageAndGetSrc(noteId, prepared.bytes, prepared.mimeType, handleImageStored);
       editor.chain().focus().setImage({ src, alt: name }).run();
     } catch (err) {
       const message = err instanceof ImageInputError ? err.message : "Failed to insert image.";
       useToasts.getState().addToast({ kind: "invalid_input", message });
     }
+  };
+
+  /** Inserts an existing attachment at the cursor - the tap-to-place equivalent of dragging
+   * it in, since HTML5 drag-and-drop doesn't work on touch. */
+  const handleInsertAttachment = (uuid: string) => {
+    if (!editor) return;
+    editor.chain().focus().setImage({ src: `${IMAGE_URI_PREFIX}${uuid}`, alt: "" }).run();
   };
 
   /** Deletes the stored image first, then removes its reference(s) from the note - in that
@@ -322,6 +385,7 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
     try {
       await invoke("delete_image", { uuid });
       removeAttachmentFromDoc(editor, uuid);
+      setAttachmentUuids((prev) => prev.filter((u) => u !== uuid));
     } catch (err) {
       handleCommandError(err);
     } finally {
@@ -340,7 +404,6 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
     lastContentRef.current = content;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     editor.commands.setContent(content, { emitUpdate: false, contentType: "markdown" });
-    setAttachmentUuids(collectAttachmentUuids(editor.state.doc));
     // onUpdate fires asynchronously, reset the flag after the current microtask queue
     Promise.resolve().then(() => { isSwitchingRef.current = false; });
   }, [noteId]);
@@ -353,7 +416,6 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
     lastContentRef.current = content;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     editor.commands.setContent(content, { emitUpdate: false, contentType: "markdown" });
-    setAttachmentUuids(collectAttachmentUuids(editor.state.doc));
     Promise.resolve().then(() => { isSwitchingRef.current = false; });
   }, [content]);
 
@@ -572,6 +634,7 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
               key={uuid}
               uuid={uuid}
               deleting={deletingAttachment === uuid}
+              onInsert={() => handleInsertAttachment(uuid)}
               onDelete={() => handleDeleteAttachment(uuid)}
             />
           ))}
