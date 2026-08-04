@@ -6,7 +6,7 @@ use axum::{
     extract::{DefaultBodyLimit, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{delete, get, post},
 };
 use dotenv::dotenv;
 use mysql_async::{Conn, Pool};
@@ -117,6 +117,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/note", get(select_note))
         .route("/image", post(send_image).layer(DefaultBodyLimit::max(MAX_IMAGE_BODY_BYTES)))
         .route("/image", get(select_image))
+        .route("/image", delete(delete_image))
         .route("/create_account", post(insert_user))
         // .route("/user", put()) //Update user
         .route("/login", get(login_request))
@@ -353,6 +354,36 @@ async fn select_image(
         .ok_or_else(|| AppError::not_found("Image doesn't exist"))?;
 
     Ok(Json(image.into()))
+}
+
+/// `DELETE /image` — deletes a single image by UUID. A no-op if it doesn't exist, so this
+/// is safe to retry.
+async fn delete_image(
+    State(pool): State<Pool>,
+    Query(params): Query<shared::SelectImageParams>,
+) -> Result<(), AppError> {
+    let mut conn = pool
+        .get_conn()
+        .await
+        .context("Failed to get DB connection")?;
+
+    let token = hex::decode(&params.token)
+        .map_err(|_| AppError::bad_request("Invalid token format"))?;
+
+    user_verify(&mut conn, params.username.clone(), token).await?;
+
+    let user = User::select(&mut conn, params.username)
+        .await
+        .map_err(AppError::from)?
+        .ok_or_else(AppError::unprocessable)?;
+
+    let user_id = user.id.ok_or_else(|| AppError::internal(anyhow::anyhow!("User has no ID")))?;
+
+    schema::Image::delete(&mut conn, user_id, params.uuid)
+        .await
+        .map_err(AppError::from)?;
+
+    Ok(())
 }
 
 /// `POST /create_account` — registers a new user. Returns 409 if the username is taken.

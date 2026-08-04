@@ -221,6 +221,20 @@ impl Image {
         .await
         .context("Failed to insert image")
     }
+
+    /// Deletes an image by UUID, scoped to the owning user. A no-op if it doesn't exist
+    /// (or belongs to someone else), so this is safe to call idempotently.
+    pub async fn delete(conn: &mut Conn, id_user: u32, uuid: String) -> Result<()> {
+        conn.exec_drop(
+            "DELETE FROM image WHERE id_user = :id_user AND uuid = :uuid",
+            params!(
+                "id_user" => id_user,
+                "uuid" => uuid
+            ),
+        )
+        .await
+        .context("Failed to delete image")
+    }
 }
 
 /// Server-side user row as stored in the `user` table.
