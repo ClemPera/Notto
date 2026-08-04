@@ -120,7 +120,8 @@ pub struct SendImage {
     pub username: String,
 }
 
-/// Query parameters for `GET /image` — fetches a single image by UUID.
+/// Query parameters for `GET /image` and `DELETE /image` — both identify a single image
+/// by UUID and need nothing else, so they share this shape.
 #[derive(Deserialize, Serialize, Debug)]
 pub struct SelectImageParams {
     pub username: String,
