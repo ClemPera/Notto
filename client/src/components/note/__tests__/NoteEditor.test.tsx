@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
@@ -64,6 +64,9 @@ describe("NoteEditor paste handling", () => {
       <NoteEditor noteId="note-2" content="" onChange={onChange} disabled={false} />
     );
 
+    await waitFor(() => {
+      expect(container.querySelector(".ProseMirror")).toBeTruthy();
+    });
     const editable = container.querySelector(".ProseMirror") as HTMLElement;
     editable.focus();
     // jsdom has no DataTransfer constructor, stand in a minimal clipboardData for the paste event.
@@ -77,7 +80,9 @@ describe("NoteEditor paste handling", () => {
         },
       },
     });
-    editable.dispatchEvent(pasteEvent);
+    act(() => {
+      editable.dispatchEvent(pasteEvent);
+    });
 
     await waitFor(() => {
       expect(editable.querySelector("strong")?.textContent).toBe("already bold");
@@ -391,5 +396,158 @@ describe("NoteEditor list indent/outdent buttons", () => {
       expect(editable.querySelector("li")).toBeNull();
       expect(editable.textContent).toContain("only item");
     });
+  });
+});
+
+describe("NoteEditor attachments list", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.mocked(invoke).mockReset();
+  });
+
+  function stubImageCommands({
+    uuid = "fake-image-uuid",
+    deleteImpl,
+  }: { uuid?: string; deleteImpl?: () => Promise<void> } = {}) {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "insert_image") return uuid;
+      if (cmd === "get_image") return Array.from(pngBytes());
+      if (cmd === "delete_image") return deleteImpl ? deleteImpl() : undefined;
+      throw new Error(`unexpected invoke: ${cmd}`);
+    });
+  }
+
+  it("shows no attachments bar for a note with no images", async () => {
+    stubImageCommands();
+    render(<NoteEditor noteId="note-attach-empty" content="just text" onChange={vi.fn()} disabled={false} />);
+
+    await waitFor(() => {
+      expect(screen.queryByTitle("Remove attachment")).toBeNull();
+    });
+  });
+
+  it("lists an image already present in the note's content on load", async () => {
+    stubImageCommands({ uuid: "existing-uuid" });
+    render(
+      <NoteEditor
+        noteId="note-attach-existing"
+        content="![a photo](nooto-image:existing-uuid)"
+        onChange={vi.fn()}
+        disabled={false}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("1 attachment")).toBeTruthy();
+    });
+  });
+
+  it("adds a newly inserted image to the attachments list", async () => {
+    // @ts-expect-error test double for HTMLImageElement
+    globalThis.Image = SmallFakeImage;
+    const user = userEvent.setup();
+    stubImageCommands({ uuid: "new-uuid" });
+    vi.mocked(openFileDialog).mockResolvedValue("/home/clement/Pictures/photo.png");
+    vi.mocked(readFile).mockResolvedValue(pngBytes());
+
+    render(<NoteEditor noteId="note-attach-add" content="" onChange={vi.fn()} disabled={false} />);
+
+    await user.click(screen.getByTitle("Insert image"));
+
+    await waitFor(() => {
+      expect(screen.getByText("1 attachment")).toBeTruthy();
+    });
+  });
+
+  it("updates the attachments list when switching to a different note", async () => {
+    stubImageCommands({ uuid: "note-a-uuid" });
+    const { rerender } = render(
+      <NoteEditor
+        noteId="note-a"
+        content="![a](nooto-image:note-a-uuid)"
+        onChange={vi.fn()}
+        disabled={false}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("1 attachment")).toBeTruthy();
+    });
+
+    rerender(<NoteEditor noteId="note-b" content="no images here" onChange={vi.fn()} disabled={false} />);
+
+    await waitFor(() => {
+      expect(screen.queryByTitle("Remove attachment")).toBeNull();
+    });
+  });
+
+  it("deletes the stored image first, then removes it from the note and the list", async () => {
+    // @ts-expect-error test double for HTMLImageElement
+    globalThis.Image = SmallFakeImage;
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    stubImageCommands({ uuid: "to-delete-uuid" });
+    vi.mocked(openFileDialog).mockResolvedValue("/home/clement/Pictures/photo.png");
+    vi.mocked(readFile).mockResolvedValue(pngBytes());
+
+    const { container } = render(
+      <NoteEditor noteId="note-attach-delete" content="" onChange={onChange} disabled={false} />
+    );
+
+    await user.click(screen.getByTitle("Insert image"));
+    await waitFor(() => {
+      expect(container.querySelector(".ProseMirror img")).toBeTruthy();
+    });
+
+    await user.click(screen.getByTitle("Remove attachment"));
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("delete_image", { uuid: "to-delete-uuid" });
+    });
+    await waitFor(() => {
+      expect(container.querySelector(".ProseMirror img")).toBeNull();
+      expect(screen.queryByTitle("Remove attachment")).toBeNull();
+    });
+
+    await waitFor(
+      () => {
+        const lastMarkdown = onChange.mock.calls[onChange.mock.calls.length - 1]?.[0] as
+          | string
+          | undefined;
+        expect(lastMarkdown).not.toMatch(/nooto-image:/);
+      },
+      { timeout: 1000 }
+    );
+  });
+
+  it("keeps the attachment listed and shows an error when delete_image fails", async () => {
+    // @ts-expect-error test double for HTMLImageElement
+    globalThis.Image = SmallFakeImage;
+    const user = userEvent.setup();
+    stubImageCommands({
+      uuid: "stubborn-uuid",
+      deleteImpl: () => Promise.reject(new Error("Could not reach the server")),
+    });
+    vi.mocked(openFileDialog).mockResolvedValue("/home/clement/Pictures/photo.png");
+    vi.mocked(readFile).mockResolvedValue(pngBytes());
+
+    const { container } = render(
+      <NoteEditor noteId="note-attach-delete-fail" content="" onChange={vi.fn()} disabled={false} />
+    );
+
+    await user.click(screen.getByTitle("Insert image"));
+    await waitFor(() => {
+      expect(container.querySelector(".ProseMirror img")).toBeTruthy();
+    });
+
+    useToasts.setState({ toasts: [] });
+    await user.click(screen.getByTitle("Remove attachment"));
+
+    await waitFor(() => {
+      expect(useToasts.getState().toasts.length).toBeGreaterThan(0);
+    });
+    // The image stays, both in the note and in the list, so the user can retry.
+    expect(container.querySelector(".ProseMirror img")).toBeTruthy();
+    expect(screen.getByTitle("Remove attachment")).toBeTruthy();
   });
 });

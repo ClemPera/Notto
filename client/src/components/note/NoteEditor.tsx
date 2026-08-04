@@ -1,11 +1,13 @@
 import { useEditor, EditorContent } from "@tiptap/react";
+import type { Editor } from "@tiptap/core";
+import type { Node as PMNode } from "@tiptap/pm/model";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
 import type { EditorView } from "@tiptap/pm/view";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { readFile } from "@tauri-apps/plugin-fs";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   prepareImageForInsert,
   ImageInputError,
@@ -13,7 +15,7 @@ import {
   fileUriToPath,
   sniffImageMimeType,
 } from "../../lib/image";
-import { IMAGE_URI_PREFIX, registerLocalImage } from "../../lib/imageStore";
+import { IMAGE_URI_PREFIX, registerLocalImage, resolveImageSrc } from "../../lib/imageStore";
 import { ResizableImage } from "../../lib/resizableImage";
 import { useToasts } from "../../store/toasts";
 import { handleCommandError } from "../../lib/errors";
@@ -28,6 +30,40 @@ async function storeImageAndGetSrc(noteId: string, bytes: Uint8Array, mimeType: 
   const uuid = await invoke<string>("insert_image", { note_id: noteId, bytes: Array.from(bytes) });
   registerLocalImage(uuid, URL.createObjectURL(new Blob([bytes], { type: mimeType })));
   return `${IMAGE_URI_PREFIX}${uuid}`;
+}
+
+/** Collects the UUID of every stored image referenced in `doc`, in document order, deduped
+ * (the same image can appear more than once if a node was copy-pasted within the editor). */
+function collectAttachmentUuids(doc: PMNode): string[] {
+  const seen = new Set<string>();
+  const uuids: string[] = [];
+  doc.descendants((node) => {
+    const src = node.attrs.src as string | undefined;
+    if (node.type.name !== "image" || !src?.startsWith(IMAGE_URI_PREFIX)) return;
+    const uuid = src.slice(IMAGE_URI_PREFIX.length);
+    if (!seen.has(uuid)) {
+      seen.add(uuid);
+      uuids.push(uuid);
+    }
+  });
+  return uuids;
+}
+
+/** Removes every image node referencing `uuid` from the editor's document (there's usually
+ * just one, but a copy-pasted duplicate is possible). */
+function removeAttachmentFromDoc(editor: Editor, uuid: string) {
+  const src = `${IMAGE_URI_PREFIX}${uuid}`;
+  const ranges: { from: number; to: number }[] = [];
+  editor.state.doc.descendants((node, pos) => {
+    if (node.type.name === "image" && node.attrs.src === src) {
+      ranges.push({ from: pos, to: pos + node.nodeSize });
+    }
+  });
+  if (ranges.length === 0) return;
+
+  const tr = editor.state.tr;
+  ranges.sort((a, b) => b.from - a.from).forEach(({ from, to }) => tr.delete(from, to));
+  editor.view.dispatch(tr);
 }
 
 /** Inserts `file` as an image node at `pos` by dispatching directly on the view (used by
@@ -117,11 +153,55 @@ function Divider() {
   return <div className="w-px h-4 bg-slate-700 mx-0.5 shrink-0" />;
 }
 
+type AttachmentThumbnailProps = {
+  uuid: string;
+  deleting: boolean;
+  onDelete: () => void;
+};
+
+function AttachmentThumbnail({ uuid, deleting, onDelete }: AttachmentThumbnailProps) {
+  const [src, setSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    resolveImageSrc(uuid)
+      .then((url) => {
+        if (!cancelled) setSrc(url);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [uuid]);
+
+  return (
+    <div className="relative shrink-0 w-10 h-10 rounded border border-slate-700 bg-slate-800 overflow-hidden">
+      {src ? (
+        <img src={src} alt="" className="w-full h-full object-cover" />
+      ) : (
+        <div className="w-full h-full animate-pulse bg-slate-700" />
+      )}
+      <button
+        onClick={onDelete}
+        disabled={deleting}
+        title="Remove attachment"
+        className="absolute inset-0 flex items-center justify-center text-xs text-transparent bg-slate-900/0
+          transition-colors hover:text-white hover:bg-slate-900/70 focus:text-white focus:bg-slate-900/70
+          focus:outline-none disabled:cursor-wait"
+      >
+        {deleting ? "…" : "✕"}
+      </button>
+    </div>
+  );
+}
+
 export default function NoteEditor({ noteId, content, onChange, disabled }: Props) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSwitchingRef = useRef(false);
   const isMountedRef = useRef(false);
   const lastContentRef = useRef(content);
+  const [attachmentUuids, setAttachmentUuids] = useState<string[]>([]);
+  const [deletingAttachment, setDeletingAttachment] = useState<string | null>(null);
 
   const editor = useEditor({
     extensions: [
@@ -136,14 +216,19 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
     content,
     contentType: "markdown",
     editable: !disabled,
+    onCreate: ({ editor }) => {
+      setAttachmentUuids(collectAttachmentUuids(editor.state.doc));
+    },
     onUpdate: ({ editor }) => {
+      setAttachmentUuids(collectAttachmentUuids(editor.state.doc));
+
       if (isSwitchingRef.current) return;
       const markdown = editor.getMarkdown();
       if (markdown === lastContentRef.current) return;
 
+      lastContentRef.current = markdown;
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
-        lastContentRef.current = markdown;
         onChange(markdown);
       }, 400);
     },
@@ -228,6 +313,22 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
     }
   };
 
+  /** Deletes the stored image first, then removes its reference(s) from the note - in that
+   * order, so a failed delete (e.g. offline with an already-synced image) leaves the
+   * attachment listed for a retry instead of silently orphaning it. */
+  const handleDeleteAttachment = async (uuid: string) => {
+    if (!editor) return;
+    setDeletingAttachment(uuid);
+    try {
+      await invoke("delete_image", { uuid });
+      removeAttachmentFromDoc(editor, uuid);
+    } catch (err) {
+      handleCommandError(err);
+    } finally {
+      setDeletingAttachment(null);
+    }
+  };
+
   // Reset content when switching to a different note, skip on initial mount
   useEffect(() => {
     if (!isMountedRef.current) {
@@ -239,6 +340,7 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
     lastContentRef.current = content;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     editor.commands.setContent(content, { emitUpdate: false, contentType: "markdown" });
+    setAttachmentUuids(collectAttachmentUuids(editor.state.doc));
     // onUpdate fires asynchronously, reset the flag after the current microtask queue
     Promise.resolve().then(() => { isSwitchingRef.current = false; });
   }, [noteId]);
@@ -251,6 +353,7 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
     lastContentRef.current = content;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     editor.commands.setContent(content, { emitUpdate: false, contentType: "markdown" });
+    setAttachmentUuids(collectAttachmentUuids(editor.state.doc));
     Promise.resolve().then(() => { isSwitchingRef.current = false; });
   }, [content]);
 
@@ -457,6 +560,23 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
         editor={editor}
         className="note-editor flex-1 overflow-y-auto overflow-x-hidden min-w-0 px-6 py-5"
       />
+
+      {/* Attachments */}
+      {attachmentUuids.length > 0 && (
+        <div className="flex items-center gap-2 px-3 py-2 border-t border-slate-700 overflow-x-auto shrink-0">
+          <span className="text-xs text-slate-500 shrink-0">
+            {attachmentUuids.length} {attachmentUuids.length === 1 ? "attachment" : "attachments"}
+          </span>
+          {attachmentUuids.map((uuid) => (
+            <AttachmentThumbnail
+              key={uuid}
+              uuid={uuid}
+              deleting={deletingAttachment === uuid}
+              onDelete={() => handleDeleteAttachment(uuid)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
