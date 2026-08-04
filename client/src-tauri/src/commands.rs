@@ -780,6 +780,44 @@ pub async fn get_image(
     Ok(plaintext)
 }
 
+/// Deletes an image, locally and (if it was ever uploaded) on the server. An image that
+/// was never synced is deleted purely locally, so this works offline for unsynced images;
+/// a synced image still requires the server call to succeed, so nothing is silently orphaned.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn delete_image(state: State<'_, Mutex<AppState>>, uuid: String) -> Result<(), CommandError> {
+    let (workspace, needs_server_delete) = {
+        let state = state.lock().await;
+        let conn = state.database.lock().await;
+
+        let workspace = state
+            .workspace
+            .clone()
+            .ok_or_else(|| CommandError::unauthorized("No workspace is loaded"))?;
+
+        // If it isn't cached locally at all, we don't know whether it was ever synced, so
+        // err on the side of trying the server delete too.
+        let needs_server_delete = db::schema::Image::select(&conn, uuid.clone())?
+            .map_or(true, |image| image.synched);
+
+        (workspace, needs_server_delete)
+    };
+
+    if needs_server_delete {
+        if let (Some(username), Some(token), Some(instance)) =
+            (workspace.username.clone(), workspace.token.clone(), workspace.instance.clone())
+        {
+            let params = shared::SelectImageParams { username, token: hex::encode(token), uuid: uuid.clone() };
+            sync::operations::delete_image(params, instance).await?;
+        }
+    }
+
+    let state = state.lock().await;
+    let conn = state.database.lock().await;
+    db::schema::Image::delete(&conn, uuid)?;
+
+    Ok(())
+}
+
 const MAX_DROPPED_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
 
 /// Reads and size-checks a local image file. Kept separate from the command wrapper so it's testable without a Tauri runtime.

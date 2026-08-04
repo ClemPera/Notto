@@ -278,6 +278,14 @@ impl Image {
 
         Ok(())
     }
+
+    /// Deletes an image from the local cache by UUID. A no-op if it isn't cached.
+    pub fn delete(conn: &Connection, uuid: String) -> Result<()> {
+        conn.execute("DELETE FROM image WHERE uuid = ?", (uuid,))
+            .context("Failed to delete image")?;
+
+        Ok(())
+    }
 }
 
 /// Local workspace row — holds the MEK in plaintext and optional server credentials.
@@ -821,6 +829,27 @@ mod tests {
 
         let fetched = Image::select(&conn, image.uuid).unwrap().unwrap();
         assert!(fetched.synched);
+    }
+
+    #[test]
+    fn image_delete_removes_the_row() {
+        let conn = open_db();
+        let ws = sample_workspace("ws1");
+        ws.insert(&conn).unwrap();
+        let ws_id = conn.last_insert_rowid() as u32;
+
+        let image = sample_image(ws_id);
+        image.insert(&conn).unwrap();
+
+        Image::delete(&conn, image.uuid.clone()).unwrap();
+
+        assert!(Image::select(&conn, image.uuid).unwrap().is_none());
+    }
+
+    #[test]
+    fn image_delete_missing_is_a_noop() {
+        let conn = open_db();
+        Image::delete(&conn, "nonexistent".to_string()).unwrap();
     }
 
     // --- Workspace DB operations ---

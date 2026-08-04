@@ -96,6 +96,22 @@ pub async fn select_image(params: SelectImageParams, instance: String) -> Result
         .context("Failed to parse server response")
 }
 
+/// `DELETE /image` — deletes a single image by UUID. A no-op server-side if it doesn't exist.
+pub async fn delete_image(params: SelectImageParams, instance: String) -> Result<()> {
+    let client = reqwest::Client::new();
+
+    client
+        .delete(instance + "/image")
+        .query(&params)
+        .send()
+        .await
+        .context("Could not reach the server")?
+        .error_for_status()
+        .context("Server rejected the delete request")?;
+
+    Ok(())
+}
+
 /// `POST /create_account` — registers a new user on the server.
 pub async fn create_account(user: User, instance: String) -> Result<()> {
     let client = reqwest::Client::new();
