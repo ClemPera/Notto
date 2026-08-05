@@ -70,6 +70,11 @@ android {
     buildFeatures {
         buildConfig = true
     }
+    // Strip the Play Store dependency metadata block so release builds are reproducible
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
 }
 
 rust {
