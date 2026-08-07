@@ -94,6 +94,17 @@ export const ResizableImage = Image.extend({
         onUpdate: (updatedNode) => {
           if (updatedNode.type !== node.type) return false;
           setImageSrc(el, updatedNode.attrs.src);
+
+          // ResizableNodeView's own update() only re-runs this callback - it does NOT
+          // reapply width/height to the element (that only happens once, at construction).
+          // Without this, a resize made on another device is saved correctly but never
+          // shows up here until the note is closed and reopened (which reconstructs the
+          // node view from scratch).
+          const width = updatedNode.attrs.width as number | null;
+          const height = updatedNode.attrs.height as number | null;
+          if (width) el.style.width = `${width}px`;
+          if (height) el.style.height = `${height}px`;
+
           return true;
         },
         options: {
@@ -102,6 +113,12 @@ export const ResizableImage = Image.extend({
           preserveAspectRatio: alwaysPreserveAspectRatio === true,
         },
       });
+
+      // Prevents the browser's own focus/selection handling for this tap. Left to the
+      // browser, tapping an image to select it can make mobile browsers scroll to the end
+      // of the note instead of to the image - ProseMirror handles the actual selection
+      // itself via its own click handling, so this doesn't affect that.
+      el.addEventListener("mousedown", (event) => event.preventDefault());
 
       const dom = nodeView.dom as HTMLElement;
 

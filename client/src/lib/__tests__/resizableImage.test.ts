@@ -54,4 +54,27 @@ describe("ResizableImage markdown round-trip", () => {
     expect(imageNode?.attrs).toMatchObject({ width: 320, height: 180 });
     expect(editor.getMarkdown()).toBe(markdown);
   });
+
+  it("reapplies width/height to the rendered element when the node updates externally (e.g. a resize made on another device, applied via setContent)", () => {
+    const editor = makeEditor();
+    editor.commands.insertContent({
+      type: "image",
+      attrs: { src: "data:image/png;base64,DDDD", alt: "resized", width: 100, height: 100 },
+    });
+
+    const img = editor.view.dom.querySelector("img") as HTMLImageElement;
+    expect(img.style.width).toBe("100px");
+    expect(img.style.height).toBe("100px");
+
+    // NoteEditor applies remote updates via setContent + emitUpdate: false - same doc shape,
+    // new size, no local resize interaction involved.
+    const resizedMarkdown = editor
+      .getMarkdown()
+      .replace('width="100" height="100"', 'width="300" height="450"');
+    editor.commands.setContent(resizedMarkdown, { contentType: "markdown", emitUpdate: false });
+
+    const updatedImg = editor.view.dom.querySelector("img") as HTMLImageElement;
+    expect(updatedImg.style.width).toBe("300px");
+    expect(updatedImg.style.height).toBe("450px");
+  });
 });
