@@ -231,9 +231,11 @@ describe("NoteEditor image insertion", () => {
     expect(img.getAttribute("alt")).toBe("pasted.png");
   });
 
-  it("disables the insert-image button when the editor is disabled", () => {
+  it("disables the insert-image button when the editor is disabled", async () => {
     render(<NoteEditor noteId="note-3" content="" onChange={vi.fn()} disabled={true} />);
-    expect(screen.getByTitle("Insert image")).toBeDisabled();
+    await waitFor(() => {
+      expect(screen.getByTitle("Insert image")).toBeDisabled();
+    });
   });
 
   it("renders resize handles on an inserted image", async () => {
@@ -256,7 +258,12 @@ describe("NoteEditor image insertion", () => {
   });
 
   it("commits an in-progress resize on touchend, since tiptap only listens for mouseup", async () => {
-    render(<NoteEditor noteId="note-touch-resize" content="" onChange={vi.fn()} disabled={false} />);
+    const { container } = render(
+      <NoteEditor noteId="note-touch-resize" content="" onChange={vi.fn()} disabled={false} />
+    );
+    await waitFor(() => {
+      expect(container.querySelector(".ProseMirror")).toBeTruthy();
+    });
 
     const marker = document.createElement("div");
     marker.setAttribute("data-resize-state", "true");
@@ -272,7 +279,12 @@ describe("NoteEditor image insertion", () => {
   });
 
   it("does not synthesize a mouseup on touchend when no resize is in progress", async () => {
-    render(<NoteEditor noteId="note-no-resize" content="" onChange={vi.fn()} disabled={false} />);
+    const { container } = render(
+      <NoteEditor noteId="note-no-resize" content="" onChange={vi.fn()} disabled={false} />
+    );
+    await waitFor(() => {
+      expect(container.querySelector(".ProseMirror")).toBeTruthy();
+    });
 
     const mouseupSpy = vi.fn();
     document.addEventListener("mouseup", mouseupSpy);
@@ -372,13 +384,15 @@ describe("NoteEditor image insertion", () => {
 });
 
 describe("NoteEditor list indent/outdent buttons", () => {
-  it("indent is disabled on the first item of a list, which has no sibling to nest under", () => {
+  it("indent is disabled on the first item of a list, which has no sibling to nest under", async () => {
     const onChange = vi.fn();
     const { getByTitle } = render(
       <NoteEditor noteId="note-3" content={"- first\n- second"} onChange={onChange} disabled={false} />
     );
 
-    expect(getByTitle("Indent list item")).toBeDisabled();
+    await waitFor(() => {
+      expect(getByTitle("Indent list item")).toBeDisabled();
+    });
   });
 
   it("outdent lifts a top-level item out of the list into a plain paragraph", async () => {
@@ -482,6 +496,41 @@ describe("NoteEditor attachments library", () => {
 
     await waitFor(() => {
       expect(screen.queryByTitle("Remove attachment")).toBeNull();
+    });
+  });
+
+  it("refreshes the attachment library when the currently open note's content is updated remotely", async () => {
+    // Distinct from switching notes: same noteId throughout, only the content prop changes,
+    // as it would when another device's edit is pulled down while this note stays open.
+    const images: Record<string, string[]> = { "note-live": ["existing-uuid"] };
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: any) => {
+      if (cmd === "list_note_images") return images[args?.note_id as string] ?? [];
+      if (cmd === "get_image") return Array.from(pngBytes());
+      throw new Error(`unexpected invoke: ${cmd}`);
+    });
+
+    const { rerender } = render(
+      <NoteEditor noteId="note-live" content="original text" onChange={vi.fn()} disabled={false} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("1 attachment")).toBeTruthy();
+    });
+
+    // Another device added an image to this same note; the backend's library grows and a
+    // sync pull updates this device's content prop without switching notes.
+    images["note-live"] = ["existing-uuid", "remote-added-uuid"];
+    rerender(
+      <NoteEditor
+        noteId="note-live"
+        content="original text, now with more"
+        onChange={vi.fn()}
+        disabled={false}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("2 attachments")).toBeTruthy();
     });
   });
 

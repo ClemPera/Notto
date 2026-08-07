@@ -417,6 +417,12 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
     if (debounceRef.current) clearTimeout(debounceRef.current);
     editor.commands.setContent(content, { emitUpdate: false, contentType: "markdown" });
     Promise.resolve().then(() => { isSwitchingRef.current = false; });
+
+    // A remote change can add or remove attachments (e.g. another device inserting an
+    // image), which the doc-independent library wouldn't otherwise know about.
+    invoke<string[]>("list_note_images", { note_id: noteId })
+      .then((uuids) => setAttachmentUuids(uuids ?? []))
+      .catch(() => {});
   }, [content]);
 
   // Sync disabled state
@@ -625,8 +631,8 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
 
       {/* Attachments */}
       {attachmentUuids.length > 0 && (
-        <div className="flex items-center gap-2 px-3 py-2 border-t border-slate-700 overflow-x-auto shrink-0">
-          <span className="text-xs text-slate-500 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-t border-slate-700 max-h-40 overflow-y-auto shrink-0">
+          <span className="text-xs text-slate-500 basis-full">
             {attachmentUuids.length} {attachmentUuids.length === 1 ? "attachment" : "attachments"}
           </span>
           {attachmentUuids.map((uuid) => (
