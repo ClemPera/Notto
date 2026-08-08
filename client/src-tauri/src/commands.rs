@@ -703,18 +703,57 @@ pub async fn handle_conflict(
 }
 
 /// Returns the UUIDs of every image belonging to `note_id` - the note's attachment
-/// library, which can include images no longer referenced in the note's text.
+/// library, which can include images no longer referenced in the note's text. Also
+/// reconciles against the server: an image deleted on another device is never pushed
+/// here, so this is the only point where a stale local copy gets noticed and pruned.
+/// Best-effort - falls back to the local list as-is if the server can't be reached.
 #[tauri::command(rename_all = "snake_case")]
 pub async fn list_note_images(
     state: State<'_, Mutex<AppState>>,
     note_id: String,
 ) -> Result<Vec<String>, CommandError> {
-    let state = state.lock().await;
-    let conn = state.database.lock().await;
+    let (workspace, images) = {
+        let state = state.lock().await;
+        let conn = state.database.lock().await;
 
-    let images = db::schema::Image::select_by_note(&conn, note_id)?;
+        let workspace = state.workspace.clone();
+        let images = db::schema::Image::select_by_note(&conn, note_id.clone())?;
 
-    Ok(images.into_iter().map(|image| image.uuid).collect())
+        (workspace, images)
+    };
+
+    let server_uuids = match workspace.as_ref().and_then(|w| {
+        Some((w.username.clone()?, w.token.clone()?, w.instance.clone()?))
+    }) {
+        Some((username, token, instance)) => {
+            let params = shared::SelectNoteImagesParams {
+                username,
+                token: hex::encode(token),
+                note_uuid: note_id,
+            };
+            sync::operations::select_note_images(params, instance).await.ok()
+        }
+        None => None,
+    };
+
+    let Some(server_uuids) = server_uuids else {
+        return Ok(images.into_iter().map(|image| image.uuid).collect());
+    };
+
+    let mut kept = Vec::with_capacity(images.len());
+    for image in images {
+        // Only prune images we know were actually uploaded - one that's still pending
+        // upload just hasn't reached the server yet, that's not the same as deleted.
+        if image.synched && !server_uuids.contains(&image.uuid) {
+            let state = state.lock().await;
+            let conn = state.database.lock().await;
+            db::schema::Image::delete(&conn, image.uuid.clone())?;
+            continue;
+        }
+        kept.push(image.uuid);
+    }
+
+    Ok(kept)
 }
 
 /// Encrypts `bytes` and stores them locally as an unsynced image linked to `note_id`.

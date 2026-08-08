@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use shared::{
-    Image, LoginRequestParams, Note, SelectImageParams, SelectNoteParams, SelectNotesParams,
-    SendImage, SentNotes, User,
+    Image, LoginRequestParams, Note, SelectImageParams, SelectNoteImagesParams, SelectNoteParams,
+    SelectNotesParams, SendImage, SentNotes, User,
 };
 
 /// `POST /notes` — uploads a batch of notes and returns per-note results (Ok or Conflict).
@@ -110,6 +110,25 @@ pub async fn delete_image(params: SelectImageParams, instance: String) -> Result
         .context("Server rejected the delete request")?;
 
     Ok(())
+}
+
+/// `GET /images` — lists every image UUID the server currently has for a note.
+pub async fn select_note_images(params: SelectNoteImagesParams, instance: String) -> Result<Vec<String>> {
+    let client = reqwest::Client::new();
+
+    let response = client
+        .get(instance + "/images")
+        .query(&params)
+        .send()
+        .await
+        .context("Could not reach the server")?
+        .error_for_status()
+        .context("Server rejected the image list request")?;
+
+    response
+        .json()
+        .await
+        .context("Failed to parse server response")
 }
 
 /// `POST /create_account` — registers a new user on the server.
