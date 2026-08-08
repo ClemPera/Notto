@@ -618,6 +618,31 @@ describe("NoteEditor attachments library", () => {
     expect(deleteButton.className).not.toMatch(/text-transparent/);
   });
 
+  it("collapses and re-expands the attachments panel, hiding/showing thumbnails but not the count", async () => {
+    stubImageCommands({ listByNote: { "note-attach-collapse": ["collapse-uuid"] } });
+    const user = userEvent.setup();
+    render(
+      <NoteEditor noteId="note-attach-collapse" content="" onChange={vi.fn()} disabled={false} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTitle("Remove attachment")).toBeTruthy();
+    });
+
+    await user.click(screen.getByTitle("Hide attachments"));
+
+    expect(screen.queryByTitle("Remove attachment")).toBeNull();
+    // Collapsing hides the thumbnails, not the toggle itself - you can still see the count
+    // and expand it again.
+    expect(screen.getByText("1 attachment")).toBeTruthy();
+
+    await user.click(screen.getByTitle("Show attachments"));
+
+    await waitFor(() => {
+      expect(screen.getByTitle("Remove attachment")).toBeTruthy();
+    });
+  });
+
   it("deletes the stored image first, then removes it from the note and the list", async () => {
     // @ts-expect-error test double for HTMLImageElement
     globalThis.Image = SmallFakeImage;

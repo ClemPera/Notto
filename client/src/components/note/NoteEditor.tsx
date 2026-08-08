@@ -229,6 +229,7 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
   const lastContentRef = useRef(content);
   const [attachmentUuids, setAttachmentUuids] = useState<string[]>([]);
   const [deletingAttachment, setDeletingAttachment] = useState<string | null>(null);
+  const [attachmentsExpanded, setAttachmentsExpanded] = useState(true);
 
   // The attachment library is the note's own thing, not derived from the doc - it can
   // include images no longer referenced in the text (removed from the note but not
@@ -631,19 +632,36 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
 
       {/* Attachments */}
       {attachmentUuids.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-t border-slate-700 max-h-40 overflow-y-auto shrink-0">
-          <span className="text-xs text-slate-500 basis-full">
-            {attachmentUuids.length} {attachmentUuids.length === 1 ? "attachment" : "attachments"}
-          </span>
-          {attachmentUuids.map((uuid) => (
-            <AttachmentThumbnail
-              key={uuid}
-              uuid={uuid}
-              deleting={deletingAttachment === uuid}
-              onInsert={() => handleInsertAttachment(uuid)}
-              onDelete={() => handleDeleteAttachment(uuid)}
-            />
-          ))}
+        <div className="border-t border-slate-700 shrink-0">
+          <button
+            onClick={() => setAttachmentsExpanded((expanded) => !expanded)}
+            title={attachmentsExpanded ? "Hide attachments" : "Show attachments"}
+            aria-expanded={attachmentsExpanded}
+            className="w-full flex items-center gap-1.5 px-3 py-1.5 text-xs text-slate-500
+              hover:text-slate-300 focus:text-slate-300 focus:outline-none"
+          >
+            <span
+              className={`inline-block transition-transform ${attachmentsExpanded ? "rotate-90" : ""}`}
+            >
+              ▸
+            </span>
+            <span>
+              {attachmentUuids.length} {attachmentUuids.length === 1 ? "attachment" : "attachments"}
+            </span>
+          </button>
+          {attachmentsExpanded && (
+            <div className="flex flex-wrap items-center gap-2 px-3 pb-2 max-h-40 overflow-y-auto">
+              {attachmentUuids.map((uuid) => (
+                <AttachmentThumbnail
+                  key={uuid}
+                  uuid={uuid}
+                  deleting={deletingAttachment === uuid}
+                  onInsert={() => handleInsertAttachment(uuid)}
+                  onDelete={() => handleDeleteAttachment(uuid)}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
