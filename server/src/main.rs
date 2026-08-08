@@ -118,6 +118,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/image", post(send_image).layer(DefaultBodyLimit::max(MAX_IMAGE_BODY_BYTES)))
         .route("/image", get(select_image))
         .route("/image", delete(delete_image))
+        .route("/images", get(select_note_images))
         .route("/create_account", post(insert_user))
         // .route("/user", put()) //Update user
         .route("/login", get(login_request))
@@ -384,6 +385,37 @@ async fn delete_image(
         .map_err(AppError::from)?;
 
     Ok(())
+}
+
+/// `GET /images` — lists every image UUID currently linked to a note, for the authenticated
+/// user. Clients use this to reconcile their local attachment cache, since there's no other
+/// way to learn an image was deleted on a different device.
+async fn select_note_images(
+    State(pool): State<Pool>,
+    Query(params): Query<shared::SelectNoteImagesParams>,
+) -> Result<Json<Vec<String>>, AppError> {
+    let mut conn = pool
+        .get_conn()
+        .await
+        .context("Failed to get DB connection")?;
+
+    let token = hex::decode(&params.token)
+        .map_err(|_| AppError::bad_request("Invalid token format"))?;
+
+    user_verify(&mut conn, params.username.clone(), token).await?;
+
+    let user = User::select(&mut conn, params.username)
+        .await
+        .map_err(AppError::from)?
+        .ok_or_else(AppError::unprocessable)?;
+
+    let user_id = user.id.ok_or_else(|| AppError::internal(anyhow::anyhow!("User has no ID")))?;
+
+    let images = schema::Image::select_by_note(&mut conn, user_id, params.note_uuid)
+        .await
+        .map_err(AppError::from)?;
+
+    Ok(Json(images.into_iter().map(|image| image.uuid).collect()))
 }
 
 /// `POST /create_account` — registers a new user. Returns 409 if the username is taken.

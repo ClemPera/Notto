@@ -222,6 +222,21 @@ impl Image {
         .context("Failed to insert image")
     }
 
+    /// Returns every image linked to `note_uuid`, scoped to the owning user. Used by
+    /// clients to reconcile their local attachment cache with what the server actually
+    /// has, since deletions aren't otherwise pushed to other devices.
+    pub async fn select_by_note(conn: &mut Conn, id_user: u32, note_uuid: String) -> Result<Vec<Self>> {
+        conn.exec(
+            "SELECT * FROM image WHERE id_user = :id_user AND id_note = :id_note",
+            params!(
+                "id_user" => id_user,
+                "id_note" => note_uuid
+            ),
+        )
+        .await
+        .context("Failed to select images for note")
+    }
+
     /// Deletes an image by UUID, scoped to the owning user. A no-op if it doesn't exist
     /// (or belongs to someone else), so this is safe to call idempotently.
     pub async fn delete(conn: &mut Conn, id_user: u32, uuid: String) -> Result<()> {

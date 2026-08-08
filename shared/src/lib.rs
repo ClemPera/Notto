@@ -128,3 +128,13 @@ pub struct SelectImageParams {
     pub token: String,
     pub uuid: String,
 }
+
+/// Query parameters for `GET /images` — lists every image UUID currently linked to a note.
+/// Used by clients to reconcile their local cache against what the server actually has,
+/// since there's no other way to learn that an image was deleted on another device.
+#[derive(Deserialize, Serialize, Debug)]
+pub struct SelectNoteImagesParams {
+    pub username: String,
+    pub token: String,
+    pub note_uuid: String,
+}
