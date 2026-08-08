@@ -449,6 +449,28 @@ describe("NoteEditor attachments library", () => {
     });
   });
 
+  it("shows an attachment already in the note's content on the very first render, without waiting for list_note_images or get_image to resolve", async () => {
+    // The bug: a second device opening a note that already references an image (from
+    // another device) wouldn't show it in the attachments bar, because the old DB-only
+    // list raced with the image's own async fetch-and-cache. Here neither backend call
+    // ever resolves, and the attachment must still appear - proving it comes from scanning
+    // the content directly, not from either async source.
+    vi.mocked(invoke).mockImplementation(() => new Promise(() => {}));
+
+    render(
+      <NoteEditor
+        noteId="note-race"
+        content="![a photo](nooto-image:race-uuid)"
+        onChange={vi.fn()}
+        disabled={false}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("1 attachment")).toBeTruthy();
+    });
+  });
+
   it("loads the note's attachment library from the backend, independent of the text", async () => {
     stubImageCommands({ listByNote: { "note-attach-existing": ["existing-uuid"] } });
     render(
@@ -567,11 +589,16 @@ describe("NoteEditor attachments library", () => {
       <NoteEditor noteId="note-attach-tap" content="" onChange={vi.fn()} disabled={false} />
     );
 
+    const user = userEvent.setup();
+    await waitFor(() => {
+      expect(screen.getByTitle("Show attachments")).toBeTruthy();
+    });
+    await user.click(screen.getByTitle("Show attachments"));
+
     await waitFor(() => {
       expect(screen.getByTitle("Tap to insert into the note, or drag it into place")).toBeTruthy();
     });
 
-    const user = userEvent.setup();
     await user.click(screen.getByTitle("Tap to insert into the note, or drag it into place"));
 
     await waitFor(() => {
@@ -608,9 +635,15 @@ describe("NoteEditor attachments library", () => {
 
   it("shows the delete button without needing hover (mobile-friendly)", async () => {
     stubImageCommands({ listByNote: { "note-attach-visible": ["vis-uuid"] } });
+    const user = userEvent.setup();
     render(
       <NoteEditor noteId="note-attach-visible" content="" onChange={vi.fn()} disabled={false} />
     );
+
+    await waitFor(() => {
+      expect(screen.getByTitle("Show attachments")).toBeTruthy();
+    });
+    await user.click(screen.getByTitle("Show attachments"));
 
     const deleteButton = await screen.findByTitle("Remove attachment");
     // The old hover-reveal implementation kept the button transparent until :hover; it should
@@ -626,14 +659,10 @@ describe("NoteEditor attachments library", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTitle("Remove attachment")).toBeTruthy();
+      expect(screen.getByTitle("Show attachments")).toBeTruthy();
     });
-
-    await user.click(screen.getByTitle("Hide attachments"));
-
+    // Collapsed by default - thumbnails aren't rendered yet, just the count header.
     expect(screen.queryByTitle("Remove attachment")).toBeNull();
-    // Collapsing hides the thumbnails, not the toggle itself - you can still see the count
-    // and expand it again.
     expect(screen.getByText("1 attachment")).toBeTruthy();
 
     await user.click(screen.getByTitle("Show attachments"));
@@ -641,6 +670,11 @@ describe("NoteEditor attachments library", () => {
     await waitFor(() => {
       expect(screen.getByTitle("Remove attachment")).toBeTruthy();
     });
+
+    await user.click(screen.getByTitle("Hide attachments"));
+
+    expect(screen.queryByTitle("Remove attachment")).toBeNull();
+    expect(screen.getByText("1 attachment")).toBeTruthy();
   });
 
   it("deletes the stored image first, then removes it from the note and the list", async () => {
@@ -661,7 +695,8 @@ describe("NoteEditor attachments library", () => {
       expect(container.querySelector(".ProseMirror img")).toBeTruthy();
     });
 
-    await user.click(screen.getByTitle("Remove attachment"));
+    await user.click(screen.getByTitle("Show attachments"));
+    await user.click(await screen.findByTitle("Remove attachment"));
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("delete_image", { uuid: "to-delete-uuid" });
@@ -703,7 +738,8 @@ describe("NoteEditor attachments library", () => {
     });
 
     useToasts.setState({ toasts: [] });
-    await user.click(screen.getByTitle("Remove attachment"));
+    await user.click(screen.getByTitle("Show attachments"));
+    await user.click(await screen.findByTitle("Remove attachment"));
 
     await waitFor(() => {
       expect(useToasts.getState().toasts.length).toBeGreaterThan(0);

@@ -1,12 +1,13 @@
 import { useEditor, EditorContent } from "@tiptap/react";
 import type { Editor } from "@tiptap/core";
+import { NodeSelection } from "@tiptap/pm/state";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
 import type { EditorView } from "@tiptap/pm/view";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { readFile } from "@tauri-apps/plugin-fs";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   prepareImageForInsert,
   ImageInputError,
@@ -24,6 +25,24 @@ import "./NoteEditor.css";
  * strip into the note - distinguishes an internal re-insert from an OS/browser file drop. */
 const ATTACHMENT_DRAG_MIME = "application/x-nooto-image-uuid";
 
+/** Extracts every `nooto-image:<uuid>` reference from raw markdown, deduped, in order of
+ * first appearance. Works directly off the text - unlike the backend's attachment list,
+ * this has no dependency on the image having been fetched/cached locally yet, which is
+ * what makes it safe to use for the very first render of a note. */
+function scanContentForAttachmentUuids(markdown: string): string[] {
+  const seen = new Set<string>();
+  const uuids: string[] = [];
+  const pattern = new RegExp(`${IMAGE_URI_PREFIX}([^)"'\\s]+)`, "g");
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(markdown)) !== null) {
+    if (!seen.has(match[1])) {
+      seen.add(match[1]);
+      uuids.push(match[1]);
+    }
+  }
+  return uuids;
+}
+
 /**
  * Hands prepared image bytes to the backend for encrypted storage, then registers a blob
  * URL locally so the editor can display it right away without waiting on a `get_image`
@@ -32,12 +51,10 @@ const ATTACHMENT_DRAG_MIME = "application/x-nooto-image-uuid";
 async function storeImageAndGetSrc(
   noteId: string,
   bytes: Uint8Array,
-  mimeType: string,
-  onStored: (uuid: string) => void
+  mimeType: string
 ): Promise<string> {
   const uuid = await invoke<string>("insert_image", { note_id: noteId, bytes: Array.from(bytes) });
   registerLocalImage(uuid, URL.createObjectURL(new Blob([bytes], { type: mimeType })));
-  onStored(uuid);
   return `${IMAGE_URI_PREFIX}${uuid}`;
 }
 
@@ -60,17 +77,11 @@ function removeAttachmentFromDoc(editor: Editor, uuid: string) {
 
 /** Inserts `file` as an image node at `pos` by dispatching directly on the view (used by
  * paste/drop handlers, which only have access to the view, not the editor instance). */
-async function insertImageAtPos(
-  view: EditorView,
-  noteId: string,
-  file: File,
-  pos: number,
-  onStored: (uuid: string) => void
-) {
+async function insertImageAtPos(view: EditorView, noteId: string, file: File, pos: number) {
   try {
     const { bytes, mimeType } = await prepareImageForInsert(file);
     if (view.isDestroyed) return;
-    const src = await storeImageAndGetSrc(noteId, bytes, mimeType, onStored);
+    const src = await storeImageAndGetSrc(noteId, bytes, mimeType);
     if (view.isDestroyed) return;
     const node = view.state.schema.nodes.image.create({ src, alt: file.name });
     view.dispatch(view.state.tr.insert(pos, node));
@@ -82,13 +93,7 @@ async function insertImageAtPos(
 
 /** Same as insertImageAtPos, but for OS file drops where WebKitGTK gives us only a
  * `file://` path in dataTransfer, not a File — the bytes are read via a Tauri command. */
-async function insertImageFromPathAtPos(
-  view: EditorView,
-  noteId: string,
-  path: string,
-  pos: number,
-  onStored: (uuid: string) => void
-) {
+async function insertImageFromPathAtPos(view: EditorView, noteId: string, path: string, pos: number) {
   const mimeType = mimeTypeForFilename(path);
   if (!mimeType) {
     useToasts.getState().addToast({
@@ -105,7 +110,7 @@ async function insertImageFromPathAtPos(
     const file = new File([new Uint8Array(droppedBytes)], name, { type: mimeType });
     const prepared = await prepareImageForInsert(file);
     if (view.isDestroyed) return;
-    const src = await storeImageAndGetSrc(noteId, prepared.bytes, prepared.mimeType, onStored);
+    const src = await storeImageAndGetSrc(noteId, prepared.bytes, prepared.mimeType);
     if (view.isDestroyed) return;
     const node = view.state.schema.nodes.image.create({ src, alt: name });
     view.dispatch(view.state.tr.insert(pos, node));
@@ -227,30 +232,46 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
   const isSwitchingRef = useRef(false);
   const isMountedRef = useRef(false);
   const lastContentRef = useRef(content);
-  const [attachmentUuids, setAttachmentUuids] = useState<string[]>([]);
+  // Mirrors the editor's current markdown, updated synchronously on every real edit (see
+  // onUpdate below) - unlike the `content` prop, this reflects local changes (like deleting
+  // an attachment) instantly, without waiting on the debounced save round trip.
+  const [liveMarkdown, setLiveMarkdown] = useState(content);
+  const [dbAttachmentUuids, setDbAttachmentUuids] = useState<string[]>([]);
   const [deletingAttachment, setDeletingAttachment] = useState<string | null>(null);
-  const [attachmentsExpanded, setAttachmentsExpanded] = useState(true);
+  const [attachmentsExpanded, setAttachmentsExpanded] = useState(false);
 
-  // The attachment library is the note's own thing, not derived from the doc - it can
-  // include images no longer referenced in the text (removed from the note but not
-  // deleted). Loaded fresh on mount and whenever we switch to a different note.
+  // The full attachment library: uuids currently referenced in the text (found by scanning
+  // the markdown directly, so this part has no dependency on the image having been resolved
+  // yet) unioned with the backend's list (which also covers images removed from the text but
+  // not explicitly deleted, so they're still recoverable).
+  const attachmentUuids = useMemo(() => {
+    const fromContent = scanContentForAttachmentUuids(liveMarkdown);
+    const seen = new Set(fromContent);
+    const merged = [...fromContent];
+    dbAttachmentUuids.forEach((uuid) => {
+      if (!seen.has(uuid)) {
+        seen.add(uuid);
+        merged.push(uuid);
+      }
+    });
+    return merged;
+  }, [liveMarkdown, dbAttachmentUuids]);
+
+  // Refreshed on mount and whenever we switch to a different note.
   useEffect(() => {
     let cancelled = false;
+    setDbAttachmentUuids([]);
     invoke<string[]>("list_note_images", { note_id: noteId })
       .then((uuids) => {
-        if (!cancelled) setAttachmentUuids(uuids ?? []);
+        if (!cancelled) setDbAttachmentUuids(uuids ?? []);
       })
       .catch(() => {
-        if (!cancelled) setAttachmentUuids([]);
+        if (!cancelled) setDbAttachmentUuids([]);
       });
     return () => {
       cancelled = true;
     };
   }, [noteId]);
-
-  const handleImageStored = (uuid: string) => {
-    setAttachmentUuids((prev) => (prev.includes(uuid) ? prev : [...prev, uuid]));
-  };
 
   const editor = useEditor({
     extensions: [
@@ -266,8 +287,10 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
     contentType: "markdown",
     editable: !disabled,
     onUpdate: ({ editor }) => {
-      if (isSwitchingRef.current) return;
       const markdown = editor.getMarkdown();
+      setLiveMarkdown(markdown);
+
+      if (isSwitchingRef.current) return;
       if (markdown === lastContentRef.current) return;
 
       lastContentRef.current = markdown;
@@ -277,6 +300,18 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
       }, 400);
     },
     editorProps: {
+      // ProseMirror's own default click handling sets the selection AND scrolls it into
+      // view; for an image (an atom node) that scroll calculation is what was jumping to
+      // the bottom of the note on mobile. Setting the selection ourselves here and
+      // returning true skips that default handling entirely - `setNodeSelection` (used
+      // elsewhere in this file for resize) doesn't scroll on its own, only the default
+      // click flow's own added scrollIntoView step does.
+      handleClickOn: (view, _pos, node, nodePos, _event, direct) => {
+        if (!direct || node.type.name !== "image") return false;
+        const selection = NodeSelection.create(view.state.doc, nodePos);
+        view.dispatch(view.state.tr.setSelection(selection));
+        return true;
+      },
       handlePaste: (view, event) => {
         if (!view.editable) return false;
 
@@ -285,7 +320,7 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
           ?.getAsFile();
         if (imageFile) {
           event.preventDefault();
-          insertImageAtPos(view, noteId, imageFile, view.state.selection.from, handleImageStored);
+          insertImageAtPos(view, noteId, imageFile, view.state.selection.from);
           return true;
         }
 
@@ -320,7 +355,7 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
         );
         if (file) {
           event.preventDefault();
-          insertImageAtPos(view, noteId, file, pos, handleImageStored);
+          insertImageAtPos(view, noteId, file, pos);
           return true;
         }
 
@@ -331,7 +366,7 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
         if (!path) return false;
 
         event.preventDefault();
-        insertImageFromPathAtPos(view, noteId, path, pos, handleImageStored);
+        insertImageFromPathAtPos(view, noteId, path, pos);
         return true;
       },
     },
@@ -362,7 +397,7 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
       const name = decodeURIComponent(path.split(/[/\\]/).pop() ?? "image");
       const file = new File([bytes], name, { type: mimeType });
       const prepared = await prepareImageForInsert(file);
-      const src = await storeImageAndGetSrc(noteId, prepared.bytes, prepared.mimeType, handleImageStored);
+      const src = await storeImageAndGetSrc(noteId, prepared.bytes, prepared.mimeType);
       editor.chain().focus().setImage({ src, alt: name }).run();
     } catch (err) {
       const message = err instanceof ImageInputError ? err.message : "Failed to insert image.";
@@ -386,7 +421,7 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
     try {
       await invoke("delete_image", { uuid });
       removeAttachmentFromDoc(editor, uuid);
-      setAttachmentUuids((prev) => prev.filter((u) => u !== uuid));
+      setDbAttachmentUuids((prev) => prev.filter((u) => u !== uuid));
     } catch (err) {
       handleCommandError(err);
     } finally {
@@ -405,6 +440,7 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
     lastContentRef.current = content;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     editor.commands.setContent(content, { emitUpdate: false, contentType: "markdown" });
+    setLiveMarkdown(content);
     // onUpdate fires asynchronously, reset the flag after the current microtask queue
     Promise.resolve().then(() => { isSwitchingRef.current = false; });
   }, [noteId]);
@@ -417,12 +453,13 @@ export default function NoteEditor({ noteId, content, onChange, disabled }: Prop
     lastContentRef.current = content;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     editor.commands.setContent(content, { emitUpdate: false, contentType: "markdown" });
+    setLiveMarkdown(content);
     Promise.resolve().then(() => { isSwitchingRef.current = false; });
 
-    // A remote change can add or remove attachments (e.g. another device inserting an
-    // image), which the doc-independent library wouldn't otherwise know about.
+    // A remote change can also remove an attachment from the text without deleting it (still
+    // recoverable), which the content scan alone wouldn't know about.
     invoke<string[]>("list_note_images", { note_id: noteId })
-      .then((uuids) => setAttachmentUuids(uuids ?? []))
+      .then((uuids) => setDbAttachmentUuids(uuids ?? []))
       .catch(() => {});
   }, [content]);
 

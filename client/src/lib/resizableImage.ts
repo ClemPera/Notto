@@ -114,12 +114,6 @@ export const ResizableImage = Image.extend({
         },
       });
 
-      // Prevents the browser's own focus/selection handling for this tap. Left to the
-      // browser, tapping an image to select it can make mobile browsers scroll to the end
-      // of the note instead of to the image - ProseMirror handles the actual selection
-      // itself via its own click handling, so this doesn't affect that.
-      el.addEventListener("mousedown", (event) => event.preventDefault());
-
       const dom = nodeView.dom as HTMLElement;
 
       // Hidden until the image loads, so the node view mounts with the correct dimensions.
