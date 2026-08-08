@@ -1,11 +1,13 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
 import { ResizableImage } from "../resizableImage";
 
+let editors: Editor[] = [];
+
 function makeEditor(content = "") {
-  return new Editor({
+  const editor = new Editor({
     element: document.createElement("div"),
     extensions: [
       StarterKit,
@@ -15,7 +17,17 @@ function makeEditor(content = "") {
     content,
     contentType: "markdown",
   });
+  editors.push(editor);
+  return editor;
 }
+
+// Undestroyed editors leave a pending ProseMirror DOMObserver timer behind, which then fires
+// after the test's jsdom environment is torn down and throws an uncaught "document is not
+// defined" - destroying here avoids that (and the CI flakiness it can cause).
+afterEach(() => {
+  editors.forEach((editor) => editor.destroy());
+  editors = [];
+});
 
 describe("ResizableImage markdown round-trip", () => {
   it("uses plain markdown syntax when no width/height is set", () => {
