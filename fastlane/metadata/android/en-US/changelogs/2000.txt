@@ -1,0 +1,1 @@
+The note list is better with sorting and pinning, also we fixed multiple visual bugs
