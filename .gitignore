@@ -25,6 +25,4 @@ dist-ssr
 target
 .env
 
-
-*.lock
 db_data/

@@ -1,0 +1,18 @@
+Nooto is a note-taking app that keeps your notes private. Everything is encrypted on your device before it ever leaves it, using AES-256-GCM encryption with keys derived locally via Argon2id. Nobody but you, not even the server operator, can read your notes.
+
+<b>Features:</b>
+<ul>
+<li>Notes are encrypted on-device before sync; the server only ever sees ciphertext</li>
+<li>Works fully offline, no account required to use the app locally</li>
+<li>Optional sync across devices, using the built-in public server or your own self-hosted instance</li>
+<li>Folders, drag-and-drop organization, and a markdown editor</li>
+<li>Image embedding and file attachments</li>
+<li>Recovery via a BIP-39 recovery phrase if you forget your password</li>
+<li>Fully open source and auditable</li>
+</ul>
+
+<b>What the server stores:</b> only an opaque note ID and ciphertext blobs for content and metadata. No readable title, no readable content, no plaintext of any kind.
+
+The default sync server is a convenience, not a requirement. It runs the same open source code published in this repository, and you can point the app at your own self-hosted instance instead (see the project README for setup instructions).
+
+<b>Please note:</b> Nooto is beta software and still under active development. The encryption design has not yet been reviewed by an independent security auditor. Use at your own discretion, and please report issues on the project's GitHub page.
