@@ -175,7 +175,9 @@ jobs:
         working-directory: client
         env:
           NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
-        run: npm run tauri android build
+        run: |
+          export RUSTFLAGS="--remap-path-prefix=$HOME/.cargo=/cargo --remap-path-prefix=$PWD=/build"
+          npm run tauri android build
 
       - name: Find APK artifacts
         run: |
