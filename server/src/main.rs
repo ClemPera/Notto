@@ -393,12 +393,18 @@ async fn login(
 
     let user = schema::User::select(&mut conn, params.username)
         .await
-        .map_err(AppError::from)?
-        .ok_or_else(||AppError::not_found("User doesn't exist"))?;
+        .map_err(AppError::from)?;
 
-    if !bool::from(params.login_hash.as_bytes().ct_eq(user.stored_password_hash.as_bytes())) {
-        return Err(AppError::unauthorized("Wrong password"));
-    }
+    // Same error and status for "no such user" and "wrong password" so the
+    // response doesn't reveal whether the username exists (CWE-203).
+    let user = match user {
+        Some(user)
+            if bool::from(params.login_hash.as_bytes().ct_eq(user.stored_password_hash.as_bytes())) =>
+        {
+            user
+        }
+        _ => return Err(AppError::unauthorized("Invalid username or password")),
+    };
 
     let mut token = vec![0u8; 32];
     SysRng
