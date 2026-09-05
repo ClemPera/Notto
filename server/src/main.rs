@@ -230,7 +230,7 @@ async fn user_verify(conn: &mut Conn, username: String, token: Vec<u8>) -> Resul
 
     for ut in user_tokens {
         if bool::from(ut.token.ct_eq(&token)) {
-            let idle_secs = now - ut.created_at;
+            let idle_secs = now - ut.last_used_at;
 
             if idle_secs > SESSION_TOKEN_MAX_AGE_SECS {
                 schema::UserToken::delete(conn, user_id, &ut.token)
@@ -476,7 +476,7 @@ async fn login(
         id: None,
         id_user: user_id,
         token,
-        created_at: chrono::Local::now().to_utc().timestamp(),
+        last_used_at: chrono::Local::now().to_utc().timestamp(),
     };
 
     user_token.insert(&mut conn).await.map_err(AppError::from)?;

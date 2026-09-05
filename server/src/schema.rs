@@ -283,11 +283,9 @@ pub struct UserToken {
     pub id: Option<u32>,
     pub id_user: u32,
     pub token: Vec<u8>,
-    /// Set at insert, refreshed by `touch()` on use. Despite the name, this tracks the
-    /// token's last activity, not its original issue time - it drives idle expiration
-    /// in user_verify(). Kept as `created_at` to match the already-shipped migration;
-    /// a future migration could rename it to `last_used_at` for clarity.
-    pub created_at: i64,
+    /// Set at insert, refreshed by `touch()` on use. Drives idle expiration in
+    /// user_verify(): a token is rejected once this is too far in the past.
+    pub last_used_at: i64,
 }
 
 impl FromRow for UserToken {
@@ -296,7 +294,7 @@ impl FromRow for UserToken {
             id: row.get(0).ok_or(FromRowError(row.clone()))?,
             id_user: row.get(1).ok_or(FromRowError(row.clone()))?,
             token: row.get(2).ok_or(FromRowError(row.clone()))?,
-            created_at: row.get(3).ok_or(FromRowError(row.clone()))?,
+            last_used_at: row.get(3).ok_or(FromRowError(row.clone()))?,
         })
     }
 }
@@ -307,12 +305,12 @@ impl UserToken {
     /// Inserts a new session token for the user.
     pub async fn insert(&self, conn: &mut Conn) -> Result<()> {
         conn.exec_drop(
-            "INSERT INTO user_token (id_user, token, created_at) \
-            VALUES (:id_user, :token, :created_at)",
+            "INSERT INTO user_token (id_user, token, last_used_at) \
+            VALUES (:id_user, :token, :last_used_at)",
             params!(
                 "id_user" => &self.id_user,
                 "token" => &self.token,
-                "created_at" => &self.created_at,
+                "last_used_at" => &self.last_used_at,
             ),
         )
         .await
@@ -344,12 +342,12 @@ impl UserToken {
         .context("Failed to delete user token")
     }
 
-    /// Refreshes a token's `created_at` so its idle-expiration window slides forward.
+    /// Refreshes a token's `last_used_at` so its idle-expiration window slides forward.
     pub async fn touch(conn: &mut Conn, id_user: u32, token: &[u8], now: i64) -> Result<()> {
         conn.exec_drop(
-            "UPDATE user_token SET created_at = :created_at WHERE id_user = :id_user AND token = :token",
+            "UPDATE user_token SET last_used_at = :last_used_at WHERE id_user = :id_user AND token = :token",
             params!(
-                "created_at" => now,
+                "last_used_at" => now,
                 "id_user" => id_user,
                 "token" => token,
             ),
