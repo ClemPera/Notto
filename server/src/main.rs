@@ -125,6 +125,7 @@ async fn main() -> anyhow::Result<()> {
         // .route("/user", put()) //Update user
         .route("/login", get(login_request))
         .route("/login", post(login))
+        .route("/logout", post(logout))
         // .route("/user_recovery", get()) //Request recovery stuff
         // .route("/user_recovery", post()) //check recovery hash
         // .route("/data_recovery", get()) //Request recovery stuff
@@ -152,8 +153,12 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Verifies that `token` matches one of the stored tokens for `username`.
-/// Returns `Forbidden` if no token matches, or `Unprocessable` if the user doesn't exist.
+/// Session tokens older than this are rejected and removed.
+const SESSION_TOKEN_MAX_AGE_SECS: i64 = 60 * 60 * 24 * 30;
+
+/// Verifies that `token` matches one of the stored tokens for `username` and
+/// hasn't expired. Returns `Forbidden` if no valid token matches, or
+/// `Unprocessable` if the user doesn't exist.
 async fn user_verify(conn: &mut Conn, username: String, token: Vec<u8>) -> Result<(), AppError> {
     //TODO: this could return user honestly
     let user = schema::User::select(conn, username)
@@ -167,8 +172,16 @@ async fn user_verify(conn: &mut Conn, username: String, token: Vec<u8>) -> Resul
         .await
         .map_err(AppError::from)?;
 
+    let now = chrono::Local::now().to_utc().timestamp();
+
     for ut in user_tokens {
         if bool::from(ut.token.ct_eq(&token)) {
+            if now - ut.created_at > SESSION_TOKEN_MAX_AGE_SECS {
+                schema::UserToken::delete(conn, user_id, &ut.token)
+                    .await
+                    .map_err(AppError::from)?;
+                return Err(AppError::unauthorized("Session expired, please log in again"));
+            }
             return Ok(());
         }
     }
@@ -387,6 +400,7 @@ async fn login(
         id: None,
         id_user: user_id,
         token,
+        created_at: chrono::Local::now().to_utc().timestamp(),
     };
 
     user_token.insert(&mut conn).await.map_err(AppError::from)?;
@@ -397,6 +411,32 @@ async fn login(
         mek_password_nonce: user.mek_password_nonce,
         token: user_token.token,
     }))
+}
+
+/// `POST /logout` — revokes the presented session token.
+async fn logout(
+    State(pool): State<Pool>,
+    Json(params): Json<shared::LogoutParams>,
+) -> Result<StatusCode, AppError> {
+    let mut conn = pool
+        .get_conn()
+        .await
+        .context("Failed to get DB connection")?;
+
+    user_verify(&mut conn, params.username.clone(), params.token.clone()).await?;
+
+    let user = User::select(&mut conn, params.username)
+        .await
+        .map_err(AppError::from)?
+        .ok_or_else(AppError::unprocessable)?;
+
+    let user_id = user.id.ok_or_else(|| AppError::internal(anyhow::anyhow!("User has no ID")))?;
+
+    schema::UserToken::delete(&mut conn, user_id, &params.token)
+        .await
+        .map_err(AppError::from)?;
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[cfg(test)]

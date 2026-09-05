@@ -100,3 +100,10 @@ pub struct Login {
     pub mek_password_nonce: Vec<u8>,
     pub token: Vec<u8>,
 }
+
+/// Payload for `POST /logout` — revokes a single session token.
+#[derive(Deserialize, Serialize, Debug)]
+pub struct LogoutParams {
+    pub username: String,
+    pub token: Vec<u8>,
+}

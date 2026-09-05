@@ -254,6 +254,7 @@ pub struct UserToken {
     pub id: Option<u32>,
     pub id_user: u32,
     pub token: Vec<u8>,
+    pub created_at: i64,
 }
 
 impl FromRow for UserToken {
@@ -262,6 +263,7 @@ impl FromRow for UserToken {
             id: row.get(0).ok_or(FromRowError(row.clone()))?,
             id_user: row.get(1).ok_or(FromRowError(row.clone()))?,
             token: row.get(2).ok_or(FromRowError(row.clone()))?,
+            created_at: row.get(3).ok_or(FromRowError(row.clone()))?,
         })
     }
 }
@@ -272,11 +274,12 @@ impl UserToken {
     /// Inserts a new session token for the user.
     pub async fn insert(&self, conn: &mut Conn) -> Result<()> {
         conn.exec_drop(
-            "INSERT INTO user_token (id_user, token) \
-            VALUES (:id_user, :token)",
+            "INSERT INTO user_token (id_user, token, created_at) \
+            VALUES (:id_user, :token, :created_at)",
             params!(
                 "id_user" => &self.id_user,
                 "token" => &self.token,
+                "created_at" => &self.created_at,
             ),
         )
         .await
@@ -293,6 +296,19 @@ impl UserToken {
         )
         .await
         .context("Failed to select user tokens")
+    }
+
+    /// Deletes a single session token, scoped to the owning user.
+    pub async fn delete(conn: &mut Conn, id_user: u32, token: &[u8]) -> Result<()> {
+        conn.exec_drop(
+            "DELETE FROM user_token WHERE id_user = :id_user AND token = :token",
+            params!(
+                "id_user" => id_user,
+                "token" => token,
+            ),
+        )
+        .await
+        .context("Failed to delete user token")
     }
 }
 
