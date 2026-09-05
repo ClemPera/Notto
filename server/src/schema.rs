@@ -104,11 +104,13 @@ impl Note {
     }
 
     /// Updates an existing note. Caller must set `server_received_at` before calling.
-    pub async fn update(&self, conn: &mut Conn) -> Result<()> {
+    /// `id_user` scopes the update to the owning user; without it, notes sharing a
+    /// UUID across different users could be overwritten cross-account.
+    pub async fn update(&self, conn: &mut Conn, id_user: u32) -> Result<()> {
         conn.exec_drop(
             "UPDATE note \
             SET content = :content, nonce = :nonce, metadata = :metadata, metadata_nonce = :metadata_nonce, updated_at = :updated_at, deleted = :deleted, server_received_at = :server_received_at \
-            WHERE uuid = :uuid",
+            WHERE uuid = :uuid AND id_user = :id_user",
             params!(
                 "content" => &self.content,
                 "nonce" => &self.nonce,
@@ -118,6 +120,7 @@ impl Note {
                 "deleted" => &self.deleted,
                 "server_received_at" => &self.server_received_at,
                 "uuid" => &self.uuid,
+                "id_user" => id_user,
             ),
         )
         .await

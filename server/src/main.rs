@@ -196,7 +196,7 @@ async fn send_notes(
                     let mut updated_note: schema::Note = note.into();
                     updated_note.id_user = Some(user_id);
                     updated_note.server_received_at = chrono::Local::now().to_utc().timestamp();
-                    updated_note.update(&mut conn).await.map_err(AppError::from)?;
+                    updated_note.update(&mut conn, user_id).await.map_err(AppError::from)?;
 
                     result.push(SentNotesResult {
                         uuid: updated_note.uuid,
