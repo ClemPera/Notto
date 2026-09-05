@@ -1,4 +1,6 @@
 use std::env;
+use std::net::SocketAddr;
+use std::sync::Arc;
 
 use anyhow::Context;
 use axum::{
@@ -13,6 +15,7 @@ use mysql_async::{Conn, Pool};
 use rand::{TryRng, rngs::SysRng};
 use shared::SentNotesResult;
 use subtle::ConstantTimeEq;
+use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder, key_extractor::SmartIpKeyExtractor};
 
 use crate::schema::User;
 
@@ -105,10 +108,19 @@ async fn main() -> anyhow::Result<()> {
 
     drop(conn);
 
-    let app = Router::new()
-        .route("/notes", post(send_notes))
-        .route("/notes", get(select_notes))
-        .route("/note", get(select_note))
+    // Login and account creation are the endpoints an attacker would brute-force, so they
+    // get a strict per-IP quota. SmartIpKeyExtractor reads X-Forwarded-For/X-Real-Ip when
+    // present, falling back to the peer address for direct (non-proxied) deployments.
+    let auth_governor_conf = Arc::new(
+        GovernorConfigBuilder::default()
+            .key_extractor(SmartIpKeyExtractor)
+            .per_second(4)
+            .burst_size(5)
+            .finish()
+            .context("Failed to build rate limiter config")?,
+    );
+
+    let auth_routes = Router::new()
         .route("/create_account", post(insert_user))
         // .route("/user", put()) //Update user
         .route("/login", get(login_request))
@@ -117,15 +129,25 @@ async fn main() -> anyhow::Result<()> {
         // .route("/user_recovery", post()) //check recovery hash
         // .route("/data_recovery", get()) //Request recovery stuff
         // .route("/data_recovery", post()) //store new recovery stuff
+        .route_layer(GovernorLayer { config: auth_governor_conf });
+
+    let app = Router::new()
+        .route("/notes", post(send_notes))
+        .route("/notes", get(select_notes))
+        .route("/note", get(select_note))
+        .merge(auth_routes)
         .with_state(pool);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
         .await
         .expect("Failed to bind TCP listener");
 
-    axum::serve(listener, app)
-        .await
-        .expect("Server error");
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
+    .expect("Server error");
 
     Ok(())
 }
