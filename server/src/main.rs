@@ -6,7 +6,7 @@ use anyhow::Context;
 use axum::{
     Json, Router,
     extract::{Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode, header::AUTHORIZATION},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
@@ -153,6 +153,17 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Extracts and hex-decodes a bearer token from the `Authorization` header.
+fn bearer_token_from_headers(headers: &HeaderMap) -> Result<Vec<u8>, AppError> {
+    let value = headers
+        .get(AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .ok_or_else(|| AppError::unauthorized("Missing or malformed Authorization header"))?;
+
+    hex::decode(value).map_err(|_| AppError::bad_request("Invalid token format"))
+}
+
 /// Session tokens older than this are rejected and removed.
 const SESSION_TOKEN_MAX_AGE_SECS: i64 = 60 * 60 * 24 * 30;
 
@@ -261,6 +272,7 @@ async fn send_notes(
 /// `GET /notes` — returns all notes for the authenticated user updated after `params.updated_at`.
 async fn select_notes(
     State(pool): State<Pool>,
+    headers: HeaderMap,
     Query(params): Query<shared::SelectNotesParams>,
 ) -> Result<Json<Vec<shared::Note>>, AppError> {
     let mut conn = pool
@@ -268,8 +280,7 @@ async fn select_notes(
         .await
         .context("Failed to get DB connection")?;
 
-    let token = hex::decode(&params.token)
-        .map_err(|_| AppError::bad_request("Invalid token format"))?;
+    let token = bearer_token_from_headers(&headers)?;
 
     user_verify(&mut conn, params.username.clone(), token).await?;
 
@@ -296,6 +307,7 @@ async fn select_notes(
 /// `GET /note` — returns a single note by UUID for the authenticated user.
 async fn select_note(
     State(pool): State<Pool>,
+    headers: HeaderMap,
     Query(params): Query<shared::SelectNoteParams>,
 ) -> Result<Json<shared::Note>, AppError> {
     let mut conn = pool
@@ -303,8 +315,7 @@ async fn select_note(
         .await
         .context("Failed to get DB connection")?;
 
-    let token = hex::decode(&params.token)
-        .map_err(|_| AppError::bad_request("Invalid token format"))?;
+    let token = bearer_token_from_headers(&headers)?;
 
     user_verify(&mut conn, params.username.clone(), token).await?;
 
