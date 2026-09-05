@@ -112,6 +112,10 @@ async fn main() -> anyhow::Result<()> {
 
     drop(conn);
 
+    rehash_legacy_password_hashes(&pool)
+        .await
+        .context("Failed to rehash legacy password hashes")?;
+
     // Login and account creation are the endpoints an attacker would brute-force, so they
     // get a strict per-IP quota. SmartIpKeyExtractor reads X-Forwarded-For/X-Real-Ip when
     // present, falling back to the peer address for direct (non-proxied) deployments.
@@ -157,35 +161,69 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Current server-side password hash format. See schema::User::password_hash_version.
+/// Password hash format version written by insert_user() and by the startup
+/// migration in rehash_legacy_password_hashes(). See schema::User::password_hash_version.
 const CURRENT_PASSWORD_HASH_VERSION: u8 = 2;
 
 /// Re-hashes a client-computed login_hash with a fresh salt so the stored value alone
 /// isn't sufficient to authenticate (defense in depth against a database leak).
-fn harden_login_hash(login_hash: &str) -> Result<String, AppError> {
+fn harden_login_hash(login_hash: &str) -> anyhow::Result<String> {
     let salt = SaltString::generate(&mut OsRng);
     Argon2::default()
         .hash_password(login_hash.as_bytes(), &salt)
         .map(|hash| hash.to_string())
-        .map_err(|e| AppError::internal(anyhow::anyhow!("Failed to hash login_hash: {e}")))
+        .map_err(|e| anyhow::anyhow!("Failed to hash login_hash: {e}"))
 }
 
-/// Verifies a client-submitted login_hash against a stored user record, handling both
-/// the legacy (unhashed) and hardened (Argon2id-rehashed) storage formats.
-fn verify_login_hash(login_hash: &str, user: &schema::User) -> Result<bool, AppError> {
-    if user.password_hash_version >= CURRENT_PASSWORD_HASH_VERSION {
-        let parsed = PasswordHash::new(&user.stored_password_hash).map_err(|e| {
-            AppError::internal(anyhow::anyhow!("Failed to parse stored password hash: {e}"))
-        })?;
+/// Verifies a client-submitted login_hash against a hardened (Argon2id-rehashed)
+/// stored_password_hash. Every account is on this format by the time login() can run -
+/// rehash_legacy_password_hashes() upgrades any legacy row before the server starts
+/// accepting connections, and insert_user() writes new accounts in this format directly.
+fn verify_login_hash(login_hash: &str, stored_password_hash: &str) -> Result<bool, AppError> {
+    let parsed = PasswordHash::new(stored_password_hash).map_err(|e| {
+        AppError::internal(anyhow::anyhow!("Failed to parse stored password hash: {e}"))
+    })?;
 
-        Ok(Argon2::default()
-            .verify_password(login_hash.as_bytes(), &parsed)
-            .is_ok())
-    } else {
-        Ok(bool::from(
-            login_hash.as_bytes().ct_eq(user.stored_password_hash.as_bytes()),
-        ))
+    Ok(Argon2::default()
+        .verify_password(login_hash.as_bytes(), &parsed)
+        .is_ok())
+}
+
+/// One-time startup migration: rehashes any account still on the legacy password hash
+/// format (schema::User::password_hash_version < CURRENT_PASSWORD_HASH_VERSION) with a
+/// fresh per-account Argon2id salt, so a database leak alone can't be used to log in.
+/// Runs once at boot before the server starts accepting connections. After the first
+/// successful run against a given database, the WHERE clause matches zero rows on every
+/// later restart, so this becomes a fast no-op.
+///
+/// TODO: this whole function, password_hash_version, and the explicit version write in
+/// insert_user() can be deleted once you've confirmed (e.g. `SELECT COUNT(*) FROM user
+/// WHERE password_hash_version < 2`) that no account remains on the legacy format.
+async fn rehash_legacy_password_hashes(pool: &Pool) -> anyhow::Result<()> {
+    let mut conn = pool.get_conn().await.context("Failed to get DB connection")?;
+
+    let legacy_users =
+        schema::User::select_outdated_password_hashes(&mut conn, CURRENT_PASSWORD_HASH_VERSION).await?;
+
+    if legacy_users.is_empty() {
+        println!("Password hash migration: no legacy accounts to rehash");
+        return Ok(());
     }
+
+    let total = legacy_users.len();
+    let mut migrated = 0;
+
+    for user in legacy_users {
+        let Some(user_id) = user.id else { continue };
+
+        let hardened = harden_login_hash(&user.stored_password_hash)?;
+        schema::User::update_password_hash(&mut conn, user_id, &hardened, CURRENT_PASSWORD_HASH_VERSION).await?;
+        migrated += 1;
+    }
+
+    println!("Password hash migration: rehashed {migrated}/{total} legacy accounts");
+
+    Ok(())
 }
 
 /// Extracts and hex-decodes a bearer token from the `Authorization` header.
@@ -452,20 +490,11 @@ async fn login(
     // Same error and status for "no such user" and "wrong password" so the
     // response doesn't reveal whether the username exists (CWE-203).
     let user = match user {
-        Some(user) if verify_login_hash(&params.login_hash, &user)? => user,
+        Some(user) if verify_login_hash(&params.login_hash, &user.stored_password_hash)? => user,
         _ => return Err(AppError::unauthorized("Invalid username or password")),
     };
 
     let user_id = user.id.ok_or_else(|| AppError::internal(anyhow::anyhow!("User has no ID")))?;
-
-    // Transparently upgrade accounts still on the legacy (unhashed) format so
-    // no one is forced to reset their password for this change to take effect.
-    if user.password_hash_version < CURRENT_PASSWORD_HASH_VERSION {
-        let hardened = harden_login_hash(&params.login_hash)?;
-        schema::User::update_password_hash(&mut conn, user_id, &hardened, CURRENT_PASSWORD_HASH_VERSION)
-            .await
-            .map_err(AppError::from)?;
-    }
 
     let mut token = vec![0u8; 32];
     SysRng

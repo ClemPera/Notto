@@ -227,6 +227,20 @@ impl User {
         .context("Failed to select user")
     }
 
+    /// Returns every user whose password_hash_version is older than `current_version`.
+    /// Used by the one-time startup migration in main.rs; matches zero rows once every
+    /// account has been rehashed.
+    pub async fn select_outdated_password_hashes(conn: &mut Conn, current_version: u8) -> Result<Vec<Self>> {
+        conn.exec(
+            "SELECT * FROM user WHERE password_hash_version < :current_version",
+            params!(
+                "current_version" => current_version
+            ),
+        )
+        .await
+        .context("Failed to select users with an outdated password hash format")
+    }
+
     /// Inserts a new user row with all encryption material.
     pub async fn insert(&self, conn: &mut Conn) -> Result<()> {
         conn.exec_drop(
