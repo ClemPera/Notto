@@ -283,6 +283,10 @@ pub struct UserToken {
     pub id: Option<u32>,
     pub id_user: u32,
     pub token: Vec<u8>,
+    /// Set at insert, refreshed by `touch()` on use. Despite the name, this tracks the
+    /// token's last activity, not its original issue time - it drives idle expiration
+    /// in user_verify(). Kept as `created_at` to match the already-shipped migration;
+    /// a future migration could rename it to `last_used_at` for clarity.
     pub created_at: i64,
 }
 
@@ -338,6 +342,20 @@ impl UserToken {
         )
         .await
         .context("Failed to delete user token")
+    }
+
+    /// Refreshes a token's `created_at` so its idle-expiration window slides forward.
+    pub async fn touch(conn: &mut Conn, id_user: u32, token: &[u8], now: i64) -> Result<()> {
+        conn.exec_drop(
+            "UPDATE user_token SET created_at = :created_at WHERE id_user = :id_user AND token = :token",
+            params!(
+                "created_at" => now,
+                "id_user" => id_user,
+                "token" => token,
+            ),
+        )
+        .await
+        .context("Failed to refresh user token")
     }
 }
 

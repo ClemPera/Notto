@@ -199,12 +199,20 @@ fn bearer_token_from_headers(headers: &HeaderMap) -> Result<Vec<u8>, AppError> {
     hex::decode(value).map_err(|_| AppError::bad_request("Invalid token format"))
 }
 
-/// Session tokens older than this are rejected and removed.
+/// A token is rejected once it's been idle (unused) for longer than this.
 const SESSION_TOKEN_MAX_AGE_SECS: i64 = 60 * 60 * 24 * 30;
 
-/// Verifies that `token` matches one of the stored tokens for `username` and
-/// hasn't expired. Returns `Forbidden` if no valid token matches, or
-/// `Unprocessable` if the user doesn't exist.
+/// Minimum gap between DB writes that refresh a token's age. Verifying still
+/// checks the real age on every request; this just avoids writing on every
+/// single one.
+const SESSION_TOKEN_REFRESH_AFTER_SECS: i64 = 60 * 60 * 24;
+
+/// Verifies that `token` matches one of the stored tokens for `username` and hasn't
+/// been idle too long. A token's age is measured from its last use, not from when it
+/// was issued, so a device in regular use is never forced to re-authenticate; only a
+/// token nobody has used in 30 days is rejected and removed.
+/// Returns `Forbidden` if no valid token matches, or `Unprocessable` if the user
+/// doesn't exist.
 async fn user_verify(conn: &mut Conn, username: String, token: Vec<u8>) -> Result<(), AppError> {
     //TODO: this could return user honestly
     let user = schema::User::select(conn, username)
@@ -222,12 +230,21 @@ async fn user_verify(conn: &mut Conn, username: String, token: Vec<u8>) -> Resul
 
     for ut in user_tokens {
         if bool::from(ut.token.ct_eq(&token)) {
-            if now - ut.created_at > SESSION_TOKEN_MAX_AGE_SECS {
+            let idle_secs = now - ut.created_at;
+
+            if idle_secs > SESSION_TOKEN_MAX_AGE_SECS {
                 schema::UserToken::delete(conn, user_id, &ut.token)
                     .await
                     .map_err(AppError::from)?;
                 return Err(AppError::unauthorized("Session expired, please log in again"));
             }
+
+            if idle_secs > SESSION_TOKEN_REFRESH_AFTER_SECS {
+                schema::UserToken::touch(conn, user_id, &ut.token, now)
+                    .await
+                    .map_err(AppError::from)?;
+            }
+
             return Ok(());
         }
     }
