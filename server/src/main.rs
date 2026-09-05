@@ -12,6 +12,7 @@ use dotenv::dotenv;
 use mysql_async::{Conn, Pool};
 use rand::{TryRng, rngs::SysRng};
 use shared::SentNotesResult;
+use subtle::ConstantTimeEq;
 
 use crate::schema::User;
 
@@ -145,7 +146,7 @@ async fn user_verify(conn: &mut Conn, username: String, token: Vec<u8>) -> Resul
         .map_err(AppError::from)?;
 
     for ut in user_tokens {
-        if ut.token == token {
+        if bool::from(ut.token.ct_eq(&token)) {
             return Ok(());
         }
     }
@@ -349,7 +350,7 @@ async fn login(
         .map_err(AppError::from)?
         .ok_or_else(||AppError::not_found("User doesn't exist"))?;
 
-    if params.login_hash != user.stored_password_hash {
+    if !bool::from(params.login_hash.as_bytes().ct_eq(user.stored_password_hash.as_bytes())) {
         return Err(AppError::unauthorized("Wrong password"));
     }
 
