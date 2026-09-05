@@ -3,6 +3,10 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use anyhow::Context;
+use argon2::{
+    Argon2,
+    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
+};
 use axum::{
     Json, Router,
     extract::{Query, State},
@@ -151,6 +155,37 @@ async fn main() -> anyhow::Result<()> {
     .expect("Server error");
 
     Ok(())
+}
+
+/// Current server-side password hash format. See schema::User::password_hash_version.
+const CURRENT_PASSWORD_HASH_VERSION: u8 = 2;
+
+/// Re-hashes a client-computed login_hash with a fresh salt so the stored value alone
+/// isn't sufficient to authenticate (defense in depth against a database leak).
+fn harden_login_hash(login_hash: &str) -> Result<String, AppError> {
+    let salt = SaltString::generate(&mut OsRng);
+    Argon2::default()
+        .hash_password(login_hash.as_bytes(), &salt)
+        .map(|hash| hash.to_string())
+        .map_err(|e| AppError::internal(anyhow::anyhow!("Failed to hash login_hash: {e}")))
+}
+
+/// Verifies a client-submitted login_hash against a stored user record, handling both
+/// the legacy (unhashed) and hardened (Argon2id-rehashed) storage formats.
+fn verify_login_hash(login_hash: &str, user: &schema::User) -> Result<bool, AppError> {
+    if user.password_hash_version >= CURRENT_PASSWORD_HASH_VERSION {
+        let parsed = PasswordHash::new(&user.stored_password_hash).map_err(|e| {
+            AppError::internal(anyhow::anyhow!("Failed to parse stored password hash: {e}"))
+        })?;
+
+        Ok(Argon2::default()
+            .verify_password(login_hash.as_bytes(), &parsed)
+            .is_ok())
+    } else {
+        Ok(bool::from(
+            login_hash.as_bytes().ct_eq(user.stored_password_hash.as_bytes()),
+        ))
+    }
 }
 
 /// Extracts and hex-decodes a bearer token from the `Authorization` header.
@@ -340,7 +375,9 @@ async fn insert_user(
     Json(user): Json<shared::User>,
 ) -> Result<(), AppError> {
     println!("received insert_user");
-    let user: schema::User = user.into();
+    let mut user: schema::User = user.into();
+    user.stored_password_hash = harden_login_hash(&user.stored_password_hash)?;
+    user.password_hash_version = CURRENT_PASSWORD_HASH_VERSION;
 
     let mut conn = pool
         .get_conn()
@@ -398,20 +435,25 @@ async fn login(
     // Same error and status for "no such user" and "wrong password" so the
     // response doesn't reveal whether the username exists (CWE-203).
     let user = match user {
-        Some(user)
-            if bool::from(params.login_hash.as_bytes().ct_eq(user.stored_password_hash.as_bytes())) =>
-        {
-            user
-        }
+        Some(user) if verify_login_hash(&params.login_hash, &user)? => user,
         _ => return Err(AppError::unauthorized("Invalid username or password")),
     };
+
+    let user_id = user.id.ok_or_else(|| AppError::internal(anyhow::anyhow!("User has no ID")))?;
+
+    // Transparently upgrade accounts still on the legacy (unhashed) format so
+    // no one is forced to reset their password for this change to take effect.
+    if user.password_hash_version < CURRENT_PASSWORD_HASH_VERSION {
+        let hardened = harden_login_hash(&params.login_hash)?;
+        schema::User::update_password_hash(&mut conn, user_id, &hardened, CURRENT_PASSWORD_HASH_VERSION)
+            .await
+            .map_err(AppError::from)?;
+    }
 
     let mut token = vec![0u8; 32];
     SysRng
         .try_fill_bytes(&mut token)
         .map_err(|e| AppError::internal(anyhow::anyhow!("Failed to generate token: {e}")))?;
-
-    let user_id = user.id.ok_or_else(|| AppError::internal(anyhow::anyhow!("User has no ID")))?;
 
     let user_token = schema::UserToken {
         id: None,

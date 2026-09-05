@@ -161,6 +161,9 @@ pub struct User {
     pub salt_recovery_data: String,
     pub salt_server_auth: String,
     pub salt_server_recovery: String,
+    /// 1 = legacy (stored_password_hash is the client's login_hash, compared as-is).
+    /// 2 = hardened (stored_password_hash is Argon2id(login_hash), verified via PasswordVerifier).
+    pub password_hash_version: u8,
 }
 
 impl FromRow for User {
@@ -180,6 +183,7 @@ impl FromRow for User {
             salt_recovery_data: row.get(11).ok_or(FromRowError(row.clone()))?,
             salt_server_auth: row.get(12).ok_or(FromRowError(row.clone()))?,
             salt_server_recovery: row.get(13).ok_or(FromRowError(row.clone()))?,
+            password_hash_version: row.get(14).ok_or(FromRowError(row.clone()))?,
         })
     }
 }
@@ -201,6 +205,9 @@ impl From<shared::User> for User {
             salt_recovery_data: user.salt_recovery_data,
             salt_server_auth: user.salt_server_auth,
             salt_server_recovery: user.salt_server_recovery,
+            // Callers that want the hardened format must hash stored_password_hash
+            // and set this explicitly before inserting; see insert_user().
+            password_hash_version: 1,
         }
     }
 }
@@ -224,9 +231,9 @@ impl User {
     pub async fn insert(&self, conn: &mut Conn) -> Result<()> {
         conn.exec_drop(
             "INSERT INTO user (username, stored_password_hash, stored_recovery_hash, encrypted_mek_password, mek_password_nonce,
-                encrypted_mek_recovery, mek_recovery_nonce, salt_auth, salt_data, salt_recovery_auth, salt_recovery_data, salt_server_auth, salt_server_recovery) \
+                encrypted_mek_recovery, mek_recovery_nonce, salt_auth, salt_data, salt_recovery_auth, salt_recovery_data, salt_server_auth, salt_server_recovery, password_hash_version) \
             VALUES (:username, :stored_password_hash, :stored_recovery_hash, :encrypted_mek_password, :mek_password_nonce, :encrypted_mek_recovery, :mek_recovery_nonce, :salt_auth, \
-                :salt_data, :salt_recovery_auth, :salt_recovery_data, :salt_server_auth, :salt_server_recovery)",
+                :salt_data, :salt_recovery_auth, :salt_recovery_data, :salt_server_auth, :salt_server_recovery, :password_hash_version)",
             params!(
                 "username" => &self.username,
                 "stored_password_hash" => &self.stored_password_hash,
@@ -241,10 +248,32 @@ impl User {
                 "salt_recovery_data" => &self.salt_recovery_data,
                 "salt_server_auth" => &self.salt_server_auth,
                 "salt_server_recovery" => &self.salt_server_recovery,
+                "password_hash_version" => &self.password_hash_version,
             ),
         )
         .await
         .context("Failed to insert user")
+    }
+
+    /// Overwrites the stored password hash and version, used to transparently
+    /// upgrade a legacy account to the hardened format on successful login.
+    pub async fn update_password_hash(
+        conn: &mut Conn,
+        id: u32,
+        stored_password_hash: &str,
+        password_hash_version: u8,
+    ) -> Result<()> {
+        conn.exec_drop(
+            "UPDATE user SET stored_password_hash = :stored_password_hash, password_hash_version = :password_hash_version \
+            WHERE id = :id",
+            params!(
+                "stored_password_hash" => stored_password_hash,
+                "password_hash_version" => password_hash_version,
+                "id" => id,
+            ),
+        )
+        .await
+        .context("Failed to update password hash")
     }
 }
 
