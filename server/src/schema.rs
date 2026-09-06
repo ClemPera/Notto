@@ -104,8 +104,7 @@ impl Note {
     }
 
     /// Updates an existing note. Caller must set `server_received_at` before calling.
-    /// `id_user` scopes the update to the owning user; without it, notes sharing a
-    /// UUID across different users could be overwritten cross-account.
+    /// id_user prevents cross-account overwrites when two users share a uuid.
     pub async fn update(&self, conn: &mut Conn, id_user: u32) -> Result<()> {
         conn.exec_drop(
             "UPDATE note \
@@ -161,8 +160,7 @@ pub struct User {
     pub salt_recovery_data: String,
     pub salt_server_auth: String,
     pub salt_server_recovery: String,
-    /// 1 = legacy (stored_password_hash is the client's login_hash, compared as-is).
-    /// 2 = hardened (stored_password_hash is Argon2id(login_hash), verified via PasswordVerifier).
+    /// 1 = legacy (raw login_hash); 2 = hardened (Argon2id(login_hash)).
     pub password_hash_version: u8,
 }
 
@@ -205,8 +203,7 @@ impl From<shared::User> for User {
             salt_recovery_data: user.salt_recovery_data,
             salt_server_auth: user.salt_server_auth,
             salt_server_recovery: user.salt_server_recovery,
-            // Callers that want the hardened format must hash stored_password_hash
-            // and set this explicitly before inserting; see insert_user().
+            // insert_user() must hash and override this before inserting.
             password_hash_version: 1,
         }
     }
@@ -227,9 +224,7 @@ impl User {
         .context("Failed to select user")
     }
 
-    /// Returns every user whose password_hash_version is older than `current_version`.
-    /// Used by the one-time startup migration in main.rs; matches zero rows once every
-    /// account has been rehashed.
+    /// Users still below `current_version`; used by the startup migration.
     pub async fn select_outdated_password_hashes(conn: &mut Conn, current_version: u8) -> Result<Vec<Self>> {
         conn.exec(
             "SELECT * FROM user WHERE password_hash_version < :current_version",
@@ -269,8 +264,7 @@ impl User {
         .context("Failed to insert user")
     }
 
-    /// Overwrites the stored password hash and version, used to transparently
-    /// upgrade a legacy account to the hardened format on successful login.
+    /// Overwrites the stored password hash and version for one user.
     pub async fn update_password_hash(
         conn: &mut Conn,
         id: u32,
@@ -297,8 +291,7 @@ pub struct UserToken {
     pub id: Option<u32>,
     pub id_user: u32,
     pub token: Vec<u8>,
-    /// Set at insert, refreshed by `touch()` on use. Drives idle expiration in
-    /// user_verify(): a token is rejected once this is too far in the past.
+    /// Refreshed by `touch()` on use; drives idle expiration in `user_verify()`.
     pub last_used_at: i64,
 }
 

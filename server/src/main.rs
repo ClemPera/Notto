@@ -116,9 +116,7 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("Failed to rehash legacy password hashes")?;
 
-    // Login and account creation are the endpoints an attacker would brute-force, so they
-    // get a strict per-IP quota. SmartIpKeyExtractor reads X-Forwarded-For/X-Real-Ip when
-    // present, falling back to the peer address for direct (non-proxied) deployments.
+    // Rate-limited below: /login and /create_account are what an attacker would brute-force.
     let auth_governor_conf = Arc::new(
         GovernorConfigBuilder::default()
             .key_extractor(SmartIpKeyExtractor)
@@ -161,12 +159,10 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Password hash format version written by insert_user() and by the startup
-/// migration in rehash_legacy_password_hashes(). See schema::User::password_hash_version.
+/// Password hash format; see schema::User::password_hash_version.
 const CURRENT_PASSWORD_HASH_VERSION: u8 = 2;
 
-/// Re-hashes a client-computed login_hash with a fresh salt so the stored value alone
-/// isn't sufficient to authenticate (defense in depth against a database leak).
+/// Re-hashes login_hash with a fresh salt (defense in depth against a DB leak).
 fn harden_login_hash(login_hash: &str) -> anyhow::Result<String> {
     let salt = SaltString::generate(&mut OsRng);
     Argon2::default()
@@ -175,10 +171,7 @@ fn harden_login_hash(login_hash: &str) -> anyhow::Result<String> {
         .map_err(|e| anyhow::anyhow!("Failed to hash login_hash: {e}"))
 }
 
-/// Verifies a client-submitted login_hash against a hardened (Argon2id-rehashed)
-/// stored_password_hash. Every account is on this format by the time login() can run -
-/// rehash_legacy_password_hashes() upgrades any legacy row before the server starts
-/// accepting connections, and insert_user() writes new accounts in this format directly.
+/// Verifies login_hash against a hardened (Argon2id) stored_password_hash.
 fn verify_login_hash(login_hash: &str, stored_password_hash: &str) -> Result<bool, AppError> {
     let parsed = PasswordHash::new(stored_password_hash).map_err(|e| {
         AppError::internal(anyhow::anyhow!("Failed to parse stored password hash: {e}"))
@@ -189,16 +182,8 @@ fn verify_login_hash(login_hash: &str, stored_password_hash: &str) -> Result<boo
         .is_ok())
 }
 
-/// One-time startup migration: rehashes any account still on the legacy password hash
-/// format (schema::User::password_hash_version < CURRENT_PASSWORD_HASH_VERSION) with a
-/// fresh per-account Argon2id salt, so a database leak alone can't be used to log in.
-/// Runs once at boot before the server starts accepting connections. After the first
-/// successful run against a given database, the WHERE clause matches zero rows on every
-/// later restart, so this becomes a fast no-op.
-///
-/// TODO: this whole function, password_hash_version, and the explicit version write in
-/// insert_user() can be deleted once you've confirmed (e.g. `SELECT COUNT(*) FROM user
-/// WHERE password_hash_version < 2`) that no account remains on the legacy format.
+/// One-time migration: rehashes accounts below CURRENT_PASSWORD_HASH_VERSION, then becomes a no-op.
+//TODO: remove this fn, password_hash_version, and its write in insert_user() once no account is below version 2.
 async fn rehash_legacy_password_hashes(pool: &Pool) -> anyhow::Result<()> {
     let mut conn = pool.get_conn().await.context("Failed to get DB connection")?;
 
@@ -240,17 +225,10 @@ fn bearer_token_from_headers(headers: &HeaderMap) -> Result<Vec<u8>, AppError> {
 /// A token is rejected once it's been idle (unused) for longer than this.
 const SESSION_TOKEN_MAX_AGE_SECS: i64 = 60 * 60 * 24 * 30;
 
-/// Minimum gap between DB writes that refresh a token's age. Verifying still
-/// checks the real age on every request; this just avoids writing on every
-/// single one.
+/// Minimum gap between DB writes that refresh a token's age.
 const SESSION_TOKEN_REFRESH_AFTER_SECS: i64 = 60 * 60 * 24;
 
-/// Verifies that `token` matches one of the stored tokens for `username` and hasn't
-/// been idle too long. A token's age is measured from its last use, not from when it
-/// was issued, so a device in regular use is never forced to re-authenticate; only a
-/// token nobody has used in 30 days is rejected and removed.
-/// Returns `Forbidden` if no valid token matches, or `Unprocessable` if the user
-/// doesn't exist.
+/// Verifies `token` is valid and not idle-expired for `username`.
 async fn user_verify(conn: &mut Conn, username: String, token: Vec<u8>) -> Result<(), AppError> {
     //TODO: this could return user honestly
     let user = schema::User::select(conn, username)
@@ -487,8 +465,7 @@ async fn login(
         .await
         .map_err(AppError::from)?;
 
-    // Same error and status for "no such user" and "wrong password" so the
-    // response doesn't reveal whether the username exists (CWE-203).
+    // Same response for missing user and wrong password to avoid enumeration (CWE-203).
     let user = match user {
         Some(user) if verify_login_hash(&params.login_hash, &user.stored_password_hash)? => user,
         _ => return Err(AppError::unauthorized("Invalid username or password")),

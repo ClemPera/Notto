@@ -32,16 +32,14 @@ pub struct Note {
     pub deleted: bool
 }
 
-/// Query parameters for `GET /notes` — fetches notes updated after `updated_at`.
-/// The session token is sent via the `Authorization: Bearer` header, not here.
+/// Query parameters for `GET /notes`; token goes in the Authorization header, not here.
 #[derive(Deserialize, Serialize, Debug)]
 pub struct SelectNotesParams {
     pub username: String,
     pub updated_at: i64
 }
 
-/// Query parameters for `GET /note` — fetches a single note by UUID.
-/// The session token is sent via the `Authorization: Bearer` header, not here.
+/// Query parameters for `GET /note`; token goes in the Authorization header, not here.
 #[derive(Deserialize, Serialize, Debug)]
 pub struct SelectNoteParams {
     pub username: String,
