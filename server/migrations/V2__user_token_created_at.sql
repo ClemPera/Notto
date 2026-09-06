@@ -1,1 +1,0 @@
-ALTER TABLE `user_token` ADD COLUMN `created_at` BIGINT NOT NULL DEFAULT 0;
